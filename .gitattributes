@@ -1,0 +1,24 @@
+# Normaliser les fins de ligne en LF pour tous les fichiers texte
+* text=auto eol=lf
+
+# Scripts shell - toujours LF
+*.sh text eol=lf
+*.bash text eol=lf
+*.zsh text eol=lf
+
+# Fichiers de configuration
+*.conf text eol=lf
+*.cfg text eol=lf
+*.ini text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.toml text eol=lf
+
+# Dotfiles courants
+.bashrc text eol=lf
+.zshrc text eol=lf
+.profile text eol=lf
+.vimrc text eol=lf
+.gitconfig text eol=lf
+.tmux.conf text eol=lf

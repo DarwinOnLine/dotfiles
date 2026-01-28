@@ -1,0 +1,13 @@
+[user]
+	name = Matthieu Poignant
+	email = matthieu@highlight.pro
+[core]
+	editor = nano
+	autocrlf = input
+
+# Personal identity for personal projects
+[includeIf "gitdir:**/Projets/Perso/"]
+	path = ~/.gitconfig.personal
+
+[includeIf "gitdir:**/dotfiles/"]
+	path = ~/.gitconfig.personal
