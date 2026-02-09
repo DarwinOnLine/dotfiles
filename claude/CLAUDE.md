@@ -21,6 +21,30 @@
 - Prefer editing existing files over full rewrites
 - No over-engineering: no unrequested features, no premature abstractions
 
+## Commits
+- Keep commit messages **short and synthetic**
+- **ALWAYS prefix** commit messages with the most appropriate emoji:
+
+| Emoji | Usage |
+|-------|-------|
+| 🎉 | Initial Commit |
+| 🔖 | Version Tag |
+| ✨ | New Feature |
+| 🐛 | Bugfix |
+| 🔒 | Security Fix |
+| 📇 | Metadata |
+| ♻️ | Refactoring |
+| 📚 | Documentation |
+| 🌐 | Internationalization |
+| ♿ | Accessibility |
+| 🐎 | Performance |
+| 🎨 | Cosmetic |
+| 🔧 | Tooling |
+| 🚨 | Tests |
+| 💩 | Deprecation |
+| 🗑️ | Removal |
+| 🚧 | Work In Progress |
+
 ## Tests
 - Systematically suggest writing tests after implementation
 - Wait for approval before creating
