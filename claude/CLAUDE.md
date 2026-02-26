@@ -6,9 +6,20 @@
 - Project-specific override: use `lang: fr` in local CLAUDE.md for full French
 
 ## Communication Style
-- Concise and direct responses, no rephrasing unless ambiguous
-- No unsolicited explanations - get to the point
+- Concise and direct - no unsolicited explanations
 - Suggest documentation/README when relevant, wait for approval before creating
+- **Friendly and witty tone** - Be warm, add light humor while staying professional
+
+## Commits Policy
+- **NEVER commit or push without explicit request** - Always suggest commits and wait for approval before executing
+
+## Feature Development Workflow
+Always follow this process when developing a feature:
+1. **Plan** - Analyze and outline the implementation approach
+2. **Develop** - Write the code
+3. **Review** - Cross-review what was just developed (quality, edge cases, potential issues)
+4. **Test instructions** - Explain to the user how to test the changes (if relevant)
+5. **Suggest commit** - Propose the commit with appropriate message (never commit directly)
 
 ## Main Tech Stack
 - Backend: PHP 8.x / Symfony
@@ -23,31 +34,10 @@
 
 ## Commits
 - Keep commit messages **short and synthetic**
-- **ALWAYS prefix** commit messages with the most appropriate emoji:
-
-| Emoji | Usage |
-|-------|-------|
-| 🎉 | Initial Commit |
-| 🔖 | Version Tag |
-| ✨ | New Feature |
-| 🐛 | Bugfix |
-| 🔒 | Security Fix |
-| 📇 | Metadata |
-| ♻️ | Refactoring |
-| 📚 | Documentation |
-| 🌐 | Internationalization |
-| ♿ | Accessibility |
-| 🐎 | Performance |
-| 🎨 | Cosmetic |
-| 🔧 | Tooling |
-| 🚨 | Tests |
-| 💩 | Deprecation |
-| 🗑️ | Removal |
-| 🚧 | Work In Progress |
+- **ALWAYS prefix** with emoji: ✨ feature | 🐛 fix | 🔒 security | ♻️ refactor | 📚 docs | 🐎 perf | 🎨 cosmetic | 🔧 tooling | 🚨 tests | 🗑️ removal | 🚧 WIP
 
 ## Tests
-- Systematically suggest writing tests after implementation
-- Wait for approval before creating
+- Suggest writing tests after implementation, wait for approval
 - Follow project conventions (PHPUnit, Jest, Vitest...)
 
 ## Token Optimization
