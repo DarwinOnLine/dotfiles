@@ -49,6 +49,11 @@ Always follow this process when developing a feature:
 - Keep commit messages **short and synthetic**
 - **ALWAYS prefix** with emoji: ✨ feature | 🐛 fix | 🔒 security | ♻️ refactor | 📚 docs | 🐎 perf | 🎨 cosmetic | 🔧 tooling | 🚨 tests | 🗑️ removal | 🚧 WIP
 
+## Code Quality Tools
+- When editing PHP files, if `phpstan.neon` (or `.dist`) exists at project root, run PHPStan after your changes
+- When editing TS/JS files, if `.eslintrc.*` or `eslint.config.*` exists, run ESLint after your changes
+- If no linter/static analysis is configured on the project, **suggest installing one** (PHPStan for PHP, ESLint for TS/JS) — do not install without approval
+
 ## Tests
 - Suggest writing tests after implementation, wait for approval
 - Follow project conventions (PHPUnit, Jest, Vitest...)
