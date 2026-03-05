@@ -35,6 +35,7 @@ Always follow this process when developing a feature:
 - No over-engineering: no unrequested features, no premature abstractions
 - **Before any UI/frontend change**, read existing neighboring components to match patterns (CSS classes, layout structure, conventions). Never guess — inspect first
 - Before implementing a feature, **verify it exists in the PRD/requirements**. Do not invent phantom tasks from assumptions — ask if unclear
+- **Before reviewing or commenting on code**, always read the full file and its related context (interfaces, services, parent classes, tests). Never review a diff in isolation
 
 ## Documentation
 - When modifying feature code, **check and update related docs** (project briefs, changelogs, status docs, README)
