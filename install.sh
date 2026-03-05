@@ -20,8 +20,9 @@ ln -sf "$DOTFILES_DIR/claude/CLAUDE.md" ~/.claude/CLAUDE.md
 echo "→ Claude Code skills..."
 mkdir -p ~/.claude/skills
 for skill_dir in "$DOTFILES_DIR/claude/skills"/*/; do
+    [ -L "$skill_dir" ] && continue
     skill_name=$(basename "$skill_dir")
-    ln -sf "$skill_dir" ~/.claude/skills/"$skill_name"
+    ln -sfn "$skill_dir" ~/.claude/skills/"$skill_name"
 done
 
 echo ""
