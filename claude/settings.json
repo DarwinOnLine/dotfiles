@@ -4,6 +4,5 @@
     "pr": ""
   },
   "model": "opus",
-  "skipDangerousModePermissionPrompt": true,
   "effortLevel": "medium"
 }
