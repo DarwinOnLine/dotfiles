@@ -9,12 +9,8 @@
     "postToolUse": [
       {
         "matcher": "Edit|Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "file=\"$CLAUDE_FILE_PATH\"; if echo \"$file\" | grep -qE '\\.php$'; then for cfg in phpstan.neon phpstan.neon.dist phpstan.dist.neon; do if [ -f \"$cfg\" ]; then php vendor/bin/phpstan analyse --no-progress --error-format=raw \"$file\" 2>&1 | head -20; break; fi; done; elif echo \"$file\" | grep -qE '\\.(ts|tsx|js|jsx)$'; then for cfg in .eslintrc.js .eslintrc.cjs .eslintrc.json .eslintrc.yml eslint.config.js eslint.config.mjs eslint.config.ts; do if [ -f \"$cfg\" ]; then npx eslint --no-warn-ignored \"$file\" 2>&1 | head -20; break; fi; done; fi"
-          }
-        ]
+        "type": "command",
+        "command": "file=\"$CLAUDE_FILE_PATH\"; if echo \"$file\" | grep -qE '\\.php$'; then for cfg in phpstan.neon phpstan.neon.dist phpstan.dist.neon; do if [ -f \"$cfg\" ]; then php vendor/bin/phpstan analyse --no-progress --error-format=raw \"$file\" 2>&1 | head -20; break; fi; done; elif echo \"$file\" | grep -qE '\\.(ts|tsx|js|jsx)$'; then for cfg in .eslintrc.js .eslintrc.cjs .eslintrc.json .eslintrc.yml eslint.config.js eslint.config.mjs eslint.config.ts; do if [ -f \"$cfg\" ]; then npx eslint --no-warn-ignored \"$file\" 2>&1 | head -20; break; fi; done; fi"
       }
     ]
   }
