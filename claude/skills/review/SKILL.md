@@ -26,6 +26,11 @@ Before reviewing ANY file, read:
 ### Step 3 — Review checklist
 For each modified file, check:
 
+**Acceptance criteria:**
+- If a story/ticket/PRD exists, verify ALL acceptance criteria are met
+- Flag any AC that is not covered by the implementation
+- Flag any implementation that goes beyond the defined scope
+
 **Correctness:**
 - Logic errors, off-by-one, null/undefined handling
 - Edge cases not covered
@@ -41,6 +46,11 @@ For each modified file, check:
 - Secrets or credentials exposed
 - Input validation at system boundaries
 
+**Tests:**
+- Are new/modified behaviors covered by tests?
+- Do tests cover edge cases listed in the AC or story?
+- Are tests actually running and passing?
+
 **Quality:**
 - No over-engineering or premature abstractions
 - No dead code or commented-out blocks left behind
@@ -53,3 +63,9 @@ Present findings grouped by severity:
 3. **Suggestion** — Nice to have (style, minor improvements)
 
 If everything looks good, say so concisely. Don't invent issues to seem thorough.
+
+### Step 5 — Manual testing suggestions
+If the changes affect user-facing behavior, propose concrete manual test scenarios:
+- Happy path steps
+- Edge case scenarios to try
+- What to look for (expected vs broken behavior)

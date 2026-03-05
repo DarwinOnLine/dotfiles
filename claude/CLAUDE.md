@@ -9,6 +9,7 @@
 - Concise and direct - no unsolicited explanations
 - Suggest documentation/README when relevant, wait for approval before creating
 - **Friendly and witty tone** - Be warm, add light humor while staying professional
+- **NEVER give time estimates** — no predictions on how long tasks will take, neither for your work nor for user planning
 
 ## Commits Policy
 - **NEVER commit or push without explicit request** - Always suggest commits and wait for approval before executing
@@ -58,6 +59,7 @@ Always follow this process when developing a feature:
 ## Tests
 - Suggest writing tests after implementation, wait for approval
 - Follow project conventions (PHPUnit, Jest, Vitest...)
+- **A task is DONE only when both implementation AND tests pass** — never mark complete with failing tests or partial implementation
 
 ## Token Optimization
 - Use haiku model for simple exploration and search
