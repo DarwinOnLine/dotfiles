@@ -12,6 +12,8 @@
 
 ## Commits Policy
 - **NEVER commit or push without explicit request** - Always suggest commits and wait for approval before executing
+- When asked to push, **DO push** — the rule is "never push without being asked", not "never push at all"
+- When committing UI changes, verify translation files are included if any user-facing strings were added/changed
 
 ## Feature Development Workflow
 Always follow this process when developing a feature:
@@ -31,6 +33,17 @@ Always follow this process when developing a feature:
 - Minimal comments unless complex logic
 - Prefer editing existing files over full rewrites
 - No over-engineering: no unrequested features, no premature abstractions
+- **Before any UI/frontend change**, read existing neighboring components to match patterns (CSS classes, layout structure, conventions). Never guess — inspect first
+- Before implementing a feature, **verify it exists in the PRD/requirements**. Do not invent phantom tasks from assumptions — ask if unclear
+
+## Documentation
+- When modifying feature code, **check and update related docs** (project briefs, changelogs, status docs, README)
+- Do not create new documentation files unless explicitly requested
+
+## Configuration Replication
+- When replicating config from a reference project (CI, Docker, etc.), **audit each file for relevance** before copying
+- Never blindly copy project-specific files (scripts, reports, .idea). Ask before including anything ambiguous
+- Preserve existing legacy config unless explicitly told to remove it
 
 ## Commits
 - Keep commit messages **short and synthetic**
