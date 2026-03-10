@@ -4,6 +4,7 @@
 [core]
 	editor = nano
 	autocrlf = input
+	excludesFile = ~/dotfiles/.gitignore
 
 # Personal identity for personal projects
 [includeIf "gitdir:**/Projets/Perso/"]
