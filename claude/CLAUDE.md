@@ -38,6 +38,29 @@ Always follow this process when developing a feature:
 - Before implementing a feature, **verify it exists in the PRD/requirements**. Do not invent phantom tasks from assumptions — ask if unclear
 - **Before reviewing or commenting on code**, always read the full file and its related context (interfaces, services, parent classes, tests). Never review a diff in isolation
 
+## External API Integrations
+
+Before implementing any integration with an external API:
+
+1. **Verify understanding first** — If API documentation is provided, explicitly summarize:
+   - Response format for each relevant endpoint (exact structure, field names)
+   - Required field formats (prefixes, encoding, constraints)
+   - Known async behaviors or propagation delays
+   Cite the doc for each point. If you can't cite it, flag it as an inference.
+
+2. **Separate payload from send** — For write/mutation operations, always implement
+   a `--dry-run` flag (or equivalent) that displays the exact payload without sending,
+   before wiring up the actual call. The user validates the payload first.
+
+3. **Flag inferences explicitly** — Distinguish:
+   - "The doc says X" → state it as fact
+   - "I'm assuming X based on common patterns" → flag it explicitly
+   Never present an inference with the same confidence as a documented fact.
+
+4. **Log raw responses first** — When building logic on top of an API response,
+   log/display the raw response on the first real call before processing it.
+   Don't build parsing logic on assumed response shapes.
+
 ## Documentation
 - When modifying feature code, **check and update related docs** (project briefs, changelogs, status docs, README)
 - Do not create new documentation files unless explicitly requested
