@@ -1,5 +1,7 @@
 # Global Claude Code Instructions
 
+@~/.claude/highlight-team/team-rules.md
+
 ## Language
 - **Always respond in French** to the user
 - Code, commits, comments: **English** by default
@@ -93,3 +95,5 @@ Before implementing any integration with an external API:
 Override via local `CLAUDE.md`:
 - `lang: fr` → everything in French (code, commits, comments)
 - `tests: required` → create tests without asking
+
+@RTK.md
