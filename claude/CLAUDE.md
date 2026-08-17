@@ -1,7 +1,5 @@
 # Global Claude Code Instructions
 
-@~/.claude/highlight-team/team-rules.md
-
 ## Language
 - **Always respond in French** to the user
 - Code, commits, comments: **English** by default
