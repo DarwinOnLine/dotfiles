@@ -25,9 +25,12 @@ Always follow this process when developing a feature:
 5. **Suggest commit** - Propose the commit with appropriate message (never commit directly)
 
 ## Main Tech Stack
-- Backend: PHP 8.x / Symfony
-- Frontend: TypeScript with Angular or React
-- Infrastructure: Docker, docker-compose
+- Backend: PHP 8.x / Symfony, or PHP 8.3+ / Laravel 12+
+- Frontend: TypeScript with Angular or React, or Livewire + Flux UI + Tailwind (Laravel projects)
+- Testing: PHPUnit, Pest, Jest, Vitest, Cypress
+- Infrastructure: Docker, docker-compose, Sail
+- **Detect the framework before writing code** — read `composer.json` / `package.json` for the installed majors. Symfony and Laravel conventions do not mix; neither do Angular and Livewire
+- If a project ships a Laravel Boost block in its `CLAUDE.md`, it is authoritative for that project
 - Adapt style and conventions to detected framework
 
 ## Code Style
@@ -76,12 +79,14 @@ Before implementing any integration with an external API:
 
 ## Code Quality Tools
 - When editing PHP files, if `phpstan.neon` (or `.dist`) exists at project root, run PHPStan after your changes
+- When editing PHP files, if `vendor/bin/pint` exists, run Pint on the edited file after your changes
 - When editing TS/JS files, if `.eslintrc.*` or `eslint.config.*` exists, run ESLint after your changes
-- If no linter/static analysis is configured on the project, **suggest installing one** (PHPStan for PHP, ESLint for TS/JS) — do not install without approval
+- Run only the tools the project actually installs — never suggest a fix for a linter that is not configured there
+- If no linter/static analysis is configured on the project, **suggest installing one** (PHPStan or Pint for PHP, ESLint for TS/JS) — do not install without approval
 
 ## Tests
 - Suggest writing tests after implementation, wait for approval
-- Follow project conventions (PHPUnit, Jest, Vitest...)
+- Follow project conventions (PHPUnit, Pest, Jest, Vitest, Cypress...) — detect which is installed, do not assume
 - **A task is DONE only when both implementation AND tests pass** — never mark complete with failing tests or partial implementation
 
 ## Token Optimization
