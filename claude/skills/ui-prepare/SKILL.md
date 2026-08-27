@@ -1,6 +1,7 @@
 ---
 name: ui-prepare
 description: Use when the user types "/ui-prepare" or before starting any significant UI/frontend task. Catalogs existing UI patterns in the project to ensure consistency before writing new code.
+model: haiku
 version: 1.0.0
 ---
 

@@ -11,11 +11,6 @@
 - **Friendly and witty tone** - Be warm, add light humor while staying professional
 - **NEVER give time estimates** — no predictions on how long tasks will take, neither for your work nor for user planning
 
-## Commits Policy
-- **NEVER commit or push without explicit request** - Always suggest commits and wait for approval before executing
-- When asked to push, **DO push** — the rule is "never push without being asked", not "never push at all"
-- When committing UI changes, verify translation files are included if any user-facing strings were added/changed
-
 ## Feature Development Workflow
 Always follow this process when developing a feature:
 1. **Plan** - Analyze and outline the implementation approach
@@ -41,58 +36,36 @@ Always follow this process when developing a feature:
 - Before implementing a feature, **verify it exists in the PRD/requirements**. Do not invent phantom tasks from assumptions — ask if unclear
 - **Before reviewing or commenting on code**, always read the full file and its related context (interfaces, services, parent classes, tests). Never review a diff in isolation
 
-## External API Integrations
-
-Before implementing any integration with an external API:
-
-1. **Verify understanding first** — If API documentation is provided, explicitly summarize:
-   - Response format for each relevant endpoint (exact structure, field names)
-   - Required field formats (prefixes, encoding, constraints)
-   - Known async behaviors or propagation delays
-   Cite the doc for each point. If you can't cite it, flag it as an inference.
-
-2. **Separate payload from send** — For write/mutation operations, always implement
-   a `--dry-run` flag (or equivalent) that displays the exact payload without sending,
-   before wiring up the actual call. The user validates the payload first.
-
-3. **Flag inferences explicitly** — Distinguish:
-   - "The doc says X" → state it as fact
-   - "I'm assuming X based on common patterns" → flag it explicitly
-   Never present an inference with the same confidence as a documented fact.
-
-4. **Log raw responses first** — When building logic on top of an API response,
-   log/display the raw response on the first real call before processing it.
-   Don't build parsing logic on assumed response shapes.
-
-## Documentation
-- When modifying feature code, **check and update related docs** (project briefs, changelogs, status docs, README)
-- Do not create new documentation files unless explicitly requested
-
-## Configuration Replication
-- When replicating config from a reference project (CI, Docker, etc.), **audit each file for relevance** before copying
-- Never blindly copy project-specific files (scripts, reports, .idea). Ask before including anything ambiguous
-- Preserve existing legacy config unless explicitly told to remove it
-
 ## Commits
-- Keep commit messages **short and synthetic**
-- **ALWAYS prefix** with emoji: ✨ feature | 🐛 fix | 🔒 security | ♻️ refactor | 📚 docs | 🐎 perf | 🎨 cosmetic | 🔧 tooling | 🚨 tests | 🗑️ removal | 🚧 WIP
-
-## Code Quality Tools
-- When editing PHP files, if `phpstan.neon` (or `.dist`) exists at project root, run PHPStan after your changes
-- When editing PHP files, if `vendor/bin/pint` exists, run Pint on the edited file after your changes
-- When editing TS/JS files, if `.eslintrc.*` or `eslint.config.*` exists, run ESLint after your changes
-- Run only the tools the project actually installs — never suggest a fix for a linter that is not configured there
-- If no linter/static analysis is configured on the project, **suggest installing one** (PHPStan or Pint for PHP, ESLint for TS/JS) — do not install without approval
+- **NEVER commit or push without explicit request** — suggest and wait for approval
+- When asked to push, **DO push** — the rule is "never push without being asked", not "never push at all"
+- Keep messages **short and synthetic**, **ALWAYS prefixed** with emoji: ✨ feature | 🐛 fix | 🔒 security | ♻️ refactor | 📚 docs | 🐎 perf | 🎨 cosmetic | 🔧 tooling | 🚨 tests | 🗑️ removal | 🚧 WIP
+- Verify translation files are included when user-facing strings changed
 
 ## Tests
 - Suggest writing tests after implementation, wait for approval
 - Follow project conventions (PHPUnit, Pest, Jest, Vitest, Cypress...) — detect which is installed, do not assume
 - **A task is DONE only when both implementation AND tests pass** — never mark complete with failing tests or partial implementation
 
-## Token Optimization
-- Use haiku model for simple exploration and search
-- Avoid redundant file reads
-- Don't re-read files already read in conversation
+## Code Quality
+- PHPStan / Pint / ESLint run automatically via the `PostToolUse` hook on `Edit`/`Write`. Do not run them by hand — **except** when the file was modified through the shell (`sed`, heredoc), which bypasses the hook: then run the project's configured tools yourself
+- If no linter/static analysis is configured, **suggest installing one** (PHPStan or Pint for PHP, ESLint for TS/JS) — never install without approval
+
+## Documentation
+- When modifying feature code, **check and update related docs** (project briefs, changelogs, status docs, README)
+- Do not create new documentation files unless explicitly requested
+
+## Command Output
+- Prefer quiet flags to keep output out of context: `vitest run <file> --reporter=dot`, `phpunit --no-output` (or `--testdox` on failures only), `npm ci --silent`, `git --no-pager`
+- Delegate noisy jobs (log analysis, wide greps, full test suites) to a subagent — its output stays out of this conversation
+
+## Compact instructions
+When compacting, always preserve:
+- The detected framework/stack and versions of the current project
+- Files already read and their relevant content, the current task and remaining steps
+- Architecture decisions validated by the user, and any rejected approach (so it is not retried)
+- Pending test/lint failures
+Drop: raw command output, exploration dead-ends, full file dumps already summarized.
 
 ## Project-Specific Configuration
 Override via local `CLAUDE.md`:

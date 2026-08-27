@@ -1,6 +1,7 @@
 ---
 name: ci-replicate
 description: Use when the user types "/ci-replicate" or asks to replicate, copy, or set up CI/CD pipelines from a reference project to another project. Ensures relevance audit before copying any file.
+model: haiku
 version: 1.0.0
 ---
 
