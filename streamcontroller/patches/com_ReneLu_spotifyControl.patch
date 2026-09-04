@@ -1,0 +1,497 @@
+diff -ruN upstream/actions/action_settings.py current/actions/action_settings.py
+--- upstream/actions/action_settings.py	2026-09-04 14:35:55.578991252 +0200
++++ current/actions/action_settings.py	2026-09-04 14:35:55.579725886 +0200
+@@ -50,13 +50,17 @@
+         TextOptions.REM_TIME: "Remaining Time"
+     }
+ 
+-    backend = None
+-
+     settings_path: str = ""
+ 
+-    def __init__(self, actionName: str, backend: Any) -> None:
++    @property
++    def backend(self):
++        return self._action.backend
++
++    def __init__(self, actionName: str, action: Any) -> None:
+         self.actionName = actionName
+-        self.backend = backend
++        # The owning action, not the backend itself - see the note on the
++        # action's `backend` property.
++        self._action = action
+ 
+         self.settings_path = os.path.join(DATA_PATH, "settings", "plugins", "com_ReneLu_spotifyControl", "actionSettings.json")
+ 
+diff -ruN upstream/actions/element_play.py current/actions/element_play.py
+--- upstream/actions/element_play.py	2026-09-04 14:35:55.579011801 +0200
++++ current/actions/element_play.py	2026-09-04 14:35:55.579743208 +0200
+@@ -24,6 +24,21 @@
+ from loguru import logger as log
+ 
+ class ElementNameRows(Enum):
++
++    # Resolved live rather than cached in __init__: StreamController builds the
++    # actions ~100ms after spawning the backend, but the backend needs longer
++    # than that to connect. A value snapshotted here is None for the whole
++    # session, and every on_tick then logs "Spotify backend is not available".
++    @property
++    def backend(self):
++        return self.plugin_base.backend
++
++    @backend.setter
++    def backend(self, value):
++        # ActionCore.__init__ does `self.backend = None` for actions that spawn
++        # their own backend. These actions don't - they proxy the plugin's, which
++        # may connect after they are built - so the assignment is ignored.
++        pass
+     NONE = "None"
+     TOP = "Top"
+     MIDDLE = "Middle"
+@@ -33,7 +48,6 @@
+ 
+     actionNameStart = "element_play"
+     actionName = ""
+-    backend = None
+ 
+     element_name_row_texts = {
+         ElementNameRows.NONE: "None",
+@@ -47,10 +61,9 @@
+ 
+     def __init__(self, *args, **kwargs):
+         super().__init__(*args, **kwargs)
+-        self.backend = self.plugin_base.backend
+         self.has_configuration = True
+         self.actionName = self.actionNameStart + "_" + str(self.input_ident.json_identifier) + "_" + self.page.get_name().replace(" ", "_")
+-        self.actionSettings = ActionSettings(self.actionName, self.backend)
++        self.actionSettings = ActionSettings(self.actionName, self)
+         self.Texts = Texts
+ 
+         self.connect(signal=Signals.PageRename, callback=self.on_page_rename)
+diff -ruN upstream/actions/info.py current/actions/info.py
+--- upstream/actions/info.py	2026-09-04 14:35:55.579021850 +0200
++++ current/actions/info.py	2026-09-04 14:35:55.579752676 +0200
+@@ -16,16 +16,29 @@
+ 
+ class InfoAction(ActionBase):
+ 
++    # Resolved live rather than cached in __init__: StreamController builds the
++    # actions ~100ms after spawning the backend, but the backend needs longer
++    # than that to connect. A value snapshotted here is None for the whole
++    # session, and every on_tick then logs "Spotify backend is not available".
++    @property
++    def backend(self):
++        return self.plugin_base.backend
++
++    @backend.setter
++    def backend(self, value):
++        # ActionCore.__init__ does `self.backend = None` for actions that spawn
++        # their own backend. These actions don't - they proxy the plugin's, which
++        # may connect after they are built - so the assignment is ignored.
++        pass
++
+     actionNameStart = "info"
+     actionName = "info"
+-    backend = None
+ 
+     def __init__(self, *args, **kwargs):
+         super().__init__(*args, **kwargs)
+-        self.backend = self.plugin_base.backend
+         self.has_configuration = True
+         self.actionName = self.actionNameStart + "_" + str(self.input_ident.json_identifier) + "_" + self.page.get_name().replace(" ", "_")
+-        self.actionSettings = ActionSettings(self.actionName, self.backend)
++        self.actionSettings = ActionSettings(self.actionName, self)
+         self.Texts = Texts
+ 
+         self.has_configuration = True
+diff -ruN upstream/actions/next_track.py current/actions/next_track.py
+--- upstream/actions/next_track.py	2026-09-04 14:35:55.579029224 +0200
++++ current/actions/next_track.py	2026-09-04 14:35:55.579759850 +0200
+@@ -18,16 +18,29 @@
+ 
+ class NextTrackAction(ActionBase):
+ 
++    # Resolved live rather than cached in __init__: StreamController builds the
++    # actions ~100ms after spawning the backend, but the backend needs longer
++    # than that to connect. A value snapshotted here is None for the whole
++    # session, and every on_tick then logs "Spotify backend is not available".
++    @property
++    def backend(self):
++        return self.plugin_base.backend
++
++    @backend.setter
++    def backend(self, value):
++        # ActionCore.__init__ does `self.backend = None` for actions that spawn
++        # their own backend. These actions don't - they proxy the plugin's, which
++        # may connect after they are built - so the assignment is ignored.
++        pass
++
+     actionNameStart = "next_track"
+     actionName = actionNameStart
+-    backend = None
+ 
+     def __init__(self, *args, **kwargs):
+         super().__init__(*args, **kwargs)
+-        self.backend = self.plugin_base.backend
+         self.has_configuration = True
+         self.actionName = self.actionNameStart + "_" + str(self.input_ident.json_identifier) + "_" + self.page.get_name().replace(" ", "_")
+-        self.actionSettings = ActionSettings(self.actionName, self.backend)
++        self.actionSettings = ActionSettings(self.actionName, self)
+         self.Texts = Texts
+ 
+         self.has_configuration = True
+diff -ruN upstream/actions/pause.py current/actions/pause.py
+--- upstream/actions/pause.py	2026-09-04 14:35:55.579036878 +0200
++++ current/actions/pause.py	2026-09-04 14:35:55.579767825 +0200
+@@ -16,15 +16,28 @@
+ 
+ class PauseAction(ActionBase):
+ 
++    # Resolved live rather than cached in __init__: StreamController builds the
++    # actions ~100ms after spawning the backend, but the backend needs longer
++    # than that to connect. A value snapshotted here is None for the whole
++    # session, and every on_tick then logs "Spotify backend is not available".
++    @property
++    def backend(self):
++        return self.plugin_base.backend
++
++    @backend.setter
++    def backend(self, value):
++        # ActionCore.__init__ does `self.backend = None` for actions that spawn
++        # their own backend. These actions don't - they proxy the plugin's, which
++        # may connect after they are built - so the assignment is ignored.
++        pass
++
+     actionName = "pause"
+-    backend = None
+ 
+     def __init__(self, *args, **kwargs):
+         super().__init__(*args, **kwargs)
+-        self.backend = self.plugin_base.backend
+         self.has_configuration = True
+         self.actionName = self.actionName + "_" + str(self.input_ident.json_identifier) + "_" + self.page.get_name().replace(" ", "_")
+-        self.actionSettings = ActionSettings(self.actionName, self.backend)
++        self.actionSettings = ActionSettings(self.actionName, self)
+         self.Texts = Texts
+ 
+         self.has_configuration = True
+diff -ruN upstream/actions/play_pause.py current/actions/play_pause.py
+--- upstream/actions/play_pause.py	2026-09-04 14:35:55.579051025 +0200
++++ current/actions/play_pause.py	2026-09-04 14:35:55.579782853 +0200
+@@ -17,15 +17,28 @@
+ 
+ class PlayPauseAction(ActionBase):
+ 
++    # Resolved live rather than cached in __init__: StreamController builds the
++    # actions ~100ms after spawning the backend, but the backend needs longer
++    # than that to connect. A value snapshotted here is None for the whole
++    # session, and every on_tick then logs "Spotify backend is not available".
++    @property
++    def backend(self):
++        return self.plugin_base.backend
++
++    @backend.setter
++    def backend(self, value):
++        # ActionCore.__init__ does `self.backend = None` for actions that spawn
++        # their own backend. These actions don't - they proxy the plugin's, which
++        # may connect after they are built - so the assignment is ignored.
++        pass
++
+     actionName = "play_pause"
+-    backend = None
+ 
+     def __init__(self, *args, **kwargs):
+         super().__init__(*args, **kwargs)
+-        self.backend = self.plugin_base.backend
+         self.has_configuration = True
+         self.actionName = self.actionName + "_" + str(self.input_ident.json_identifier) + "_" + self.page.get_name().replace(" ", "_")
+-        self.actionSettings = ActionSettings(self.actionName, self.backend)
++        self.actionSettings = ActionSettings(self.actionName, self)
+         self.Texts = Texts
+ 
+         self.has_configuration = True
+diff -ruN upstream/actions/play.py current/actions/play.py
+--- upstream/actions/play.py	2026-09-04 14:35:55.579044322 +0200
++++ current/actions/play.py	2026-09-04 14:35:55.579775439 +0200
+@@ -16,15 +16,28 @@
+ 
+ class PlayAction(ActionBase):
+ 
++    # Resolved live rather than cached in __init__: StreamController builds the
++    # actions ~100ms after spawning the backend, but the backend needs longer
++    # than that to connect. A value snapshotted here is None for the whole
++    # session, and every on_tick then logs "Spotify backend is not available".
++    @property
++    def backend(self):
++        return self.plugin_base.backend
++
++    @backend.setter
++    def backend(self, value):
++        # ActionCore.__init__ does `self.backend = None` for actions that spawn
++        # their own backend. These actions don't - they proxy the plugin's, which
++        # may connect after they are built - so the assignment is ignored.
++        pass
++
+     actionName = "play"
+-    backend = None
+ 
+     def __init__(self, *args, **kwargs):
+         super().__init__(*args, **kwargs)
+-        self.backend = self.plugin_base.backend
+         self.has_configuration = True
+         self.actionName = self.actionName + "_" + str(self.input_ident.json_identifier) + "_" + self.page.get_name().replace(" ", "_")
+-        self.actionSettings = ActionSettings(self.actionName, self.backend)
++        self.actionSettings = ActionSettings(self.actionName, self)
+         self.Texts = Texts
+ 
+         self.has_configuration = True
+diff -ruN upstream/actions/previous_track.py current/actions/previous_track.py
+--- upstream/actions/previous_track.py	2026-09-04 14:35:55.579058589 +0200
++++ current/actions/previous_track.py	2026-09-04 14:35:55.579791199 +0200
+@@ -18,15 +18,28 @@
+ 
+ class PrevTrackAction(ActionBase):
+ 
++    # Resolved live rather than cached in __init__: StreamController builds the
++    # actions ~100ms after spawning the backend, but the backend needs longer
++    # than that to connect. A value snapshotted here is None for the whole
++    # session, and every on_tick then logs "Spotify backend is not available".
++    @property
++    def backend(self):
++        return self.plugin_base.backend
++
++    @backend.setter
++    def backend(self, value):
++        # ActionCore.__init__ does `self.backend = None` for actions that spawn
++        # their own backend. These actions don't - they proxy the plugin's, which
++        # may connect after they are built - so the assignment is ignored.
++        pass
++
+     actionName = "prev_track"
+-    backend = None
+ 
+     def __init__(self, *args, **kwargs):
+         super().__init__(*args, **kwargs)
+-        self.backend = self.plugin_base.backend
+         self.has_configuration = True
+         self.actionName = self.actionName + "_" + str(self.input_ident.json_identifier) + "_" + self.page.get_name().replace(" ", "_")
+-        self.actionSettings = ActionSettings(self.actionName, self.backend)
++        self.actionSettings = ActionSettings(self.actionName, self)
+         self.Texts = Texts
+ 
+         self.has_configuration = True
+diff -ruN upstream/actions/repeat.py current/actions/repeat.py
+--- upstream/actions/repeat.py	2026-09-04 14:35:55.579065262 +0200
++++ current/actions/repeat.py	2026-09-04 14:35:55.579798603 +0200
+@@ -17,16 +17,29 @@
+ 
+ class RepeatAction(ActionBase):
+ 
++    # Resolved live rather than cached in __init__: StreamController builds the
++    # actions ~100ms after spawning the backend, but the backend needs longer
++    # than that to connect. A value snapshotted here is None for the whole
++    # session, and every on_tick then logs "Spotify backend is not available".
++    @property
++    def backend(self):
++        return self.plugin_base.backend
++
++    @backend.setter
++    def backend(self, value):
++        # ActionCore.__init__ does `self.backend = None` for actions that spawn
++        # their own backend. These actions don't - they proxy the plugin's, which
++        # may connect after they are built - so the assignment is ignored.
++        pass
++
+     actionNameStart = "repeat"
+     actionName = "repeat"
+-    backend = None
+ 
+     def __init__(self, *args, **kwargs):
+         super().__init__(*args, **kwargs)
+-        self.backend = self.plugin_base.backend
+         self.has_configuration = True
+         self.actionName = self.actionName + "_" + str(self.input_ident.json_identifier) + "_" + self.page.get_name().replace(" ", "_")
+-        self.actionSettings = ActionSettings(self.actionName, self.backend)
++        self.actionSettings = ActionSettings(self.actionName, self)
+         self.Texts = Texts
+ 
+         self.has_configuration = True
+diff -ruN upstream/actions/shuffle.py current/actions/shuffle.py
+--- upstream/actions/shuffle.py	2026-09-04 14:35:55.579072726 +0200
++++ current/actions/shuffle.py	2026-09-04 14:35:55.579807059 +0200
+@@ -16,15 +16,28 @@
+ 
+ class ShuffleAction(ActionBase):
+ 
++    # Resolved live rather than cached in __init__: StreamController builds the
++    # actions ~100ms after spawning the backend, but the backend needs longer
++    # than that to connect. A value snapshotted here is None for the whole
++    # session, and every on_tick then logs "Spotify backend is not available".
++    @property
++    def backend(self):
++        return self.plugin_base.backend
++
++    @backend.setter
++    def backend(self, value):
++        # ActionCore.__init__ does `self.backend = None` for actions that spawn
++        # their own backend. These actions don't - they proxy the plugin's, which
++        # may connect after they are built - so the assignment is ignored.
++        pass
++
+     actionName = "shuffle"
+-    backend = None
+ 
+     def __init__(self, *args, **kwargs):
+         super().__init__(*args, **kwargs)
+-        self.backend = self.plugin_base.backend
+         self.has_configuration = True
+         self.actionName = self.actionName + "_" + str(self.input_ident.json_identifier) + "_" + self.page.get_name().replace(" ", "_")
+-        self.actionSettings = ActionSettings(self.actionName, self.backend)
++        self.actionSettings = ActionSettings(self.actionName, self)
+         self.Texts = Texts
+ 
+         self.has_configuration = True
+diff -ruN upstream/actions/vol_down.py current/actions/vol_down.py
+--- upstream/actions/vol_down.py	2026-09-04 14:35:55.579081142 +0200
++++ current/actions/vol_down.py	2026-09-04 14:35:55.579816807 +0200
+@@ -18,15 +18,28 @@
+ 
+ class VolDwnAction(ActionBase):
+ 
++    # Resolved live rather than cached in __init__: StreamController builds the
++    # actions ~100ms after spawning the backend, but the backend needs longer
++    # than that to connect. A value snapshotted here is None for the whole
++    # session, and every on_tick then logs "Spotify backend is not available".
++    @property
++    def backend(self):
++        return self.plugin_base.backend
++
++    @backend.setter
++    def backend(self, value):
++        # ActionCore.__init__ does `self.backend = None` for actions that spawn
++        # their own backend. These actions don't - they proxy the plugin's, which
++        # may connect after they are built - so the assignment is ignored.
++        pass
++
+     actionName = "vol_dwn"
+-    backend = None
+ 
+     def __init__(self, *args, **kwargs):
+         super().__init__(*args, **kwargs)
+-        self.backend = self.plugin_base.backend
+         self.has_configuration = True
+         self.actionName = self.actionName + "_" + str(self.input_ident.json_identifier) + "_" + self.page.get_name().replace(" ", "_")
+-        self.actionSettings = ActionSettings(self.actionName, self.backend)
++        self.actionSettings = ActionSettings(self.actionName, self)
+         self.Texts = Texts
+ 
+         self.has_configuration = True
+diff -ruN upstream/actions/vol_mute.py current/actions/vol_mute.py
+--- upstream/actions/vol_mute.py	2026-09-04 14:35:55.579088936 +0200
++++ current/actions/vol_mute.py	2026-09-04 14:35:55.579825834 +0200
+@@ -17,16 +17,29 @@
+ 
+ class VolMuteAction(ActionBase):
+ 
++    # Resolved live rather than cached in __init__: StreamController builds the
++    # actions ~100ms after spawning the backend, but the backend needs longer
++    # than that to connect. A value snapshotted here is None for the whole
++    # session, and every on_tick then logs "Spotify backend is not available".
++    @property
++    def backend(self):
++        return self.plugin_base.backend
++
++    @backend.setter
++    def backend(self, value):
++        # ActionCore.__init__ does `self.backend = None` for actions that spawn
++        # their own backend. These actions don't - they proxy the plugin's, which
++        # may connect after they are built - so the assignment is ignored.
++        pass
++
+     actionName = "vol_mute"
+-    backend = None
+     last_volume = 0
+ 
+     def __init__(self, *args, **kwargs):
+         super().__init__(*args, **kwargs)
+-        self.backend = self.plugin_base.backend
+         self.has_configuration = True
+         self.actionName = self.actionName + "_" + str(self.input_ident.json_identifier) + "_" + self.page.get_name().replace(" ", "_")
+-        self.actionSettings = ActionSettings(self.actionName, self.backend)
++        self.actionSettings = ActionSettings(self.actionName, self)
+         self.Texts = Texts
+ 
+         self.has_configuration = True
+diff -ruN upstream/actions/vol_set.py current/actions/vol_set.py
+--- upstream/actions/vol_set.py	2026-09-04 14:35:55.579097362 +0200
++++ current/actions/vol_set.py	2026-09-04 14:35:55.579834200 +0200
+@@ -17,17 +17,30 @@
+ 
+ class VolSetAction(ActionBase):
+ 
++    # Resolved live rather than cached in __init__: StreamController builds the
++    # actions ~100ms after spawning the backend, but the backend needs longer
++    # than that to connect. A value snapshotted here is None for the whole
++    # session, and every on_tick then logs "Spotify backend is not available".
++    @property
++    def backend(self):
++        return self.plugin_base.backend
++
++    @backend.setter
++    def backend(self, value):
++        # ActionCore.__init__ does `self.backend = None` for actions that spawn
++        # their own backend. These actions don't - they proxy the plugin's, which
++        # may connect after they are built - so the assignment is ignored.
++        pass
++
+     actionNameStart = "vol_set"
+     actionName = actionNameStart
+-    backend = None
+     last_volume = 0
+ 
+     def __init__(self, *args, **kwargs):
+         super().__init__(*args, **kwargs)
+-        self.backend = self.plugin_base.backend
+         self.has_configuration = True
+         self.actionName = self.actionName + "_" + str(self.input_ident.json_identifier) + "_" + self.page.get_name().replace(" ", "_")
+-        self.actionSettings = ActionSettings(self.actionName, self.backend)
++        self.actionSettings = ActionSettings(self.actionName, self)
+         self.Texts = Texts
+ 
+         self.has_configuration = True
+diff -ruN upstream/actions/vol_up.py current/actions/vol_up.py
+--- upstream/actions/vol_up.py	2026-09-04 14:35:55.579107251 +0200
++++ current/actions/vol_up.py	2026-09-04 14:35:55.579842786 +0200
+@@ -18,16 +18,29 @@
+ 
+ class VolUpAction(ActionBase):
+ 
++    # Resolved live rather than cached in __init__: StreamController builds the
++    # actions ~100ms after spawning the backend, but the backend needs longer
++    # than that to connect. A value snapshotted here is None for the whole
++    # session, and every on_tick then logs "Spotify backend is not available".
++    @property
++    def backend(self):
++        return self.plugin_base.backend
++
++    @backend.setter
++    def backend(self, value):
++        # ActionCore.__init__ does `self.backend = None` for actions that spawn
++        # their own backend. These actions don't - they proxy the plugin's, which
++        # may connect after they are built - so the assignment is ignored.
++        pass
++
+     actionNameStart = "vol_up"
+     actionName = actionNameStart
+-    backend = None
+ 
+     def __init__(self, *args, **kwargs):
+         super().__init__(*args, **kwargs)
+-        self.backend = self.plugin_base.backend
+         self.has_configuration = True
+         self.actionName = self.actionNameStart + "_" + str(self.input_ident.json_identifier) + "_" + self.page.get_name().replace(" ", "_")
+-        self.actionSettings = ActionSettings(self.actionName, self.backend)
++        self.actionSettings = ActionSettings(self.actionName, self)
+         self.Texts = Texts
+ 
+         self.has_configuration = True

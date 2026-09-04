@@ -6,6 +6,7 @@ Personal configuration files for development tools.
 
 - **Git** - Global config with automatic personal identity for `**/Projets/Perso/**`
 - **Claude Code** - AI assistant configuration (instructions, attribution settings)
+- **StreamController** - patches for two Stream Deck plugins installed from its store
 
 ## Installation
 
@@ -27,6 +28,9 @@ dotfiles/
 │   ├── settings.json    # Attribution, hooks, editor settings
 │   ├── hooks/           # Scripts called by settings.json hooks
 │   └── skills/          # Personal skills, symlinked into ~/.claude/skills
+├── streamcontroller/
+│   ├── patches/         # Diffs against the store-installed plugins
+│   └── install.sh       # Applies them, idempotent
 └── install.sh           # Symlink installer
 ```
 
@@ -48,3 +52,7 @@ dotfiles/
   when no runtime is available.
 - Sub-agents and the `/chiffrage` skill live in a separate repo, `dev-assistant`,
   to avoid overlapping with the BeHigh team bundle (`dev-workflow`).
+- `streamcontroller/` patches store-installed plugins instead of symlinking them —
+  the store overwrites its plugin directory on update. Re-run `./install.sh` after
+  a plugin update; it refuses to apply a patch whose pinned upstream commit moved.
+  See `streamcontroller/README.md`.

@@ -1,0 +1,722 @@
+diff -ruN upstream/actions/ClaudeDailyUsage/ClaudeDailyUsage.py current/actions/ClaudeDailyUsage/ClaudeDailyUsage.py
+--- upstream/actions/ClaudeDailyUsage/ClaudeDailyUsage.py	1970-01-01 01:00:00.000000000 +0100
++++ current/actions/ClaudeDailyUsage/ClaudeDailyUsage.py	2026-09-04 14:35:55.559987780 +0200
+@@ -0,0 +1,240 @@
++import threading
++from datetime import datetime, timedelta
++
++import gi
++from loguru import logger as log
++
++gi.require_version("Gtk", "4.0")
++gi.require_version("Adw", "1")
++from gi.repository import Adw, Gtk, GLib
++
++from src.backend.PluginManager.ActionBase import ActionBase
++
++from .. import _shared as shared
++
++# ---------------------------------------------------------------------------
++# Defaults & helpers
++# ---------------------------------------------------------------------------
++
++DEFAULT_TOKEN_LIMIT = 0  # 0 => show raw token count instead of a percentage
++
++
++def fetch_today(command: str, timeout: int = 25) -> dict:
++    """
++    Runs `<command> daily --json --offline --last 1` and returns today's
++    totals as a dict, or {} if ccusage returned nothing.
++    """
++    data = shared.run_ccusage(command, "daily --json --offline --last 1", timeout=timeout)
++    days = data.get("daily", [])
++    return days[0] if days else {}
++
++
++def day_bounds(day: str | None):
++    """
++    ccusage buckets days by local calendar date, exposed as 'period'
++    (YYYY-MM-DD) in 20.x and as 'date' in older releases. Returns the local
++    datetime at which that day rolls over, or None if it can't be parsed.
++
++    Derived from the data rather than hardcoded to midnight, so this still
++    holds if ccusage's day boundary ever stops being local midnight.
++    """
++    if not day:
++        return None
++    try:
++        start = datetime.strptime(day, "%Y-%m-%d").astimezone()
++    except ValueError:
++        return None
++    return start + timedelta(days=1)
++
++
++# ---------------------------------------------------------------------------
++# Action
++# ---------------------------------------------------------------------------
++
++
++class ClaudeDailyUsage(ActionBase):
++    def __init__(self, *args, **kwargs):
++        super().__init__(*args, **kwargs)
++        self.has_configuration = True
++
++        self._stop_event = threading.Event()
++        self._worker_thread: threading.Thread | None = None
++
++    # ------------------------------------------------------------------ #
++    # Lifecycle
++    # ------------------------------------------------------------------ #
++
++    def on_ready(self):
++        shared.set_static_icon(self)
++
++        self.set_top_label(text=self.tr("claude-daily.label.top"), font_size=12, **shared.LABEL_OUTLINE)
++        self.set_center_label(text=self.tr("claude-usage.label.loading"), font_size=20, **shared.LABEL_OUTLINE)
++        self.set_bottom_label(text="", font_size=11, **shared.LABEL_OUTLINE)
++
++        self._start_worker()
++
++    def on_remove(self):
++        self._stop_event.set()
++
++    def on_key_down(self):
++        threading.Thread(
++            target=self._refresh_once, daemon=True, name="ClaudeDailyUsage-manual-refresh"
++        ).start()
++
++    def tr(self, key: str) -> str:
++        return self.plugin_base.lm.get(key)
++
++    # ------------------------------------------------------------------ #
++    # Settings
++    # ------------------------------------------------------------------ #
++
++    def _settings(self) -> dict:
++        settings = self.get_settings()
++        settings.setdefault("command", shared.DEFAULT_COMMAND)
++        settings.setdefault("token_limit", DEFAULT_TOKEN_LIMIT)
++        settings.setdefault("refresh_seconds", shared.DEFAULT_REFRESH_SECONDS)
++        settings.setdefault("show_cost", False)
++        self.set_settings(settings)
++        return settings
++
++    def get_config_rows(self) -> list:
++        settings = self._settings()
++
++        command_row = Adw.EntryRow(title=self.tr("claude-usage.command.title"))
++        command_row.set_text(str(settings.get("command", shared.DEFAULT_COMMAND)))
++        command_row.connect("notify::text", self._on_command_changed)
++
++        limit_row = Adw.EntryRow(title=self.tr("claude-daily.token-limit.title"))
++        limit_row.set_text(str(settings.get("token_limit", DEFAULT_TOKEN_LIMIT)))
++        limit_row.connect("notify::text", self._on_token_limit_changed)
++
++        refresh_row = Adw.EntryRow(title=self.tr("claude-usage.refresh.title"))
++        refresh_row.set_text(str(settings.get("refresh_seconds", shared.DEFAULT_REFRESH_SECONDS)))
++        refresh_row.connect("notify::text", self._on_refresh_changed)
++
++        cost_row = Adw.ActionRow(
++            title=self.tr("claude-daily.show-cost.title"),
++            subtitle=self.tr("claude-daily.show-cost.subtitle"),
++        )
++        cost_switch = Gtk.Switch(
++            active=bool(settings.get("show_cost", False)), valign=Gtk.Align.CENTER
++        )
++        cost_switch.connect("notify::active", self._on_show_cost_changed)
++        cost_row.add_suffix(cost_switch)
++        cost_row.set_activatable_widget(cost_switch)
++
++        return [command_row, limit_row, refresh_row, cost_row]
++
++    def _on_command_changed(self, entry, _):
++        settings = self.get_settings()
++        settings["command"] = entry.get_text().strip() or shared.DEFAULT_COMMAND
++        self.set_settings(settings)
++
++    def _on_token_limit_changed(self, entry, _):
++        settings = self.get_settings()
++        settings["token_limit"] = shared.parse_int(entry.get_text(), DEFAULT_TOKEN_LIMIT, minimum=0)
++        self.set_settings(settings)
++
++    def _on_refresh_changed(self, entry, _):
++        settings = self.get_settings()
++        settings["refresh_seconds"] = shared.parse_int(
++            entry.get_text(), shared.DEFAULT_REFRESH_SECONDS, minimum=shared.MIN_REFRESH_SECONDS
++        )
++        self.set_settings(settings)
++
++    def _on_show_cost_changed(self, switch, _):
++        settings = self.get_settings()
++        settings["show_cost"] = switch.get_active()
++        self.set_settings(settings)
++
++    # ------------------------------------------------------------------ #
++    # Background refresh
++    # ------------------------------------------------------------------ #
++
++    def _start_worker(self):
++        if self._worker_thread and self._worker_thread.is_alive():
++            return
++        self._stop_event.clear()
++        self._worker_thread = threading.Thread(
++            target=self._worker_loop, daemon=True, name=f"ClaudeDailyUsage-{self.action_id}"
++        )
++        self._worker_thread.start()
++
++    def _worker_loop(self):
++        while not self._stop_event.is_set():
++            self._refresh_once()
++            interval = max(
++                shared.MIN_REFRESH_SECONDS,
++                int(self._settings().get("refresh_seconds", shared.DEFAULT_REFRESH_SECONDS)),
++            )
++            self._stop_event.wait(interval)
++
++    def _refresh_once(self):
++        settings = self._settings()
++        command = settings.get("command", shared.DEFAULT_COMMAND)
++        try:
++            day = fetch_today(command)
++            error = None
++        except Exception as e:  # noqa: BLE001 - surface any failure on the key
++            day = None
++            error = str(e)
++
++        GLib.idle_add(self._render, day, error, settings)
++
++    # ------------------------------------------------------------------ #
++    # Rendering
++    # ------------------------------------------------------------------ #
++
++    def _render(self, day, error, settings):
++        if error is not None:
++            shared.set_static_icon(self)
++            self.set_center_label(text="!", font_size=22, **shared.LABEL_OUTLINE)
++            self.set_bottom_label(text=self.tr("claude-daily.label.error"), font_size=10, **shared.LABEL_OUTLINE)
++            self.set_background_color(shared.COLOR_CRIT)
++            log.error(f"[ClaudeDailyUsage] {error}")
++            return False
++
++        if not day:
++            shared.set_static_icon(self)
++            self.set_center_label(text="–", font_size=22, **shared.LABEL_OUTLINE)
++            self.set_bottom_label(text=self.tr("claude-daily.label.no-data"), font_size=10, **shared.LABEL_OUTLINE)
++            self.set_background_color(shared.COLOR_NONE)
++            return False
++
++        total_tokens = int(day.get("totalTokens") or 0)
++
++        token_limit = shared.parse_int(settings.get("token_limit"), DEFAULT_TOKEN_LIMIT, minimum=0)
++        show_cost = bool(settings.get("show_cost", False))
++
++        # 20.x renamed the day field from "date" to "period".
++        resets_at = day_bounds(day.get("period") or day.get("date"))
++
++        if token_limit > 0:
++            percent = round((total_tokens / token_limit) * 100)
++            center_text = f"{percent}%"
++            if percent >= 90:
++                color = shared.COLOR_CRIT
++            elif percent >= 70:
++                color = shared.COLOR_WARN
++            else:
++                color = shared.COLOR_OK
++            self.set_media(image=shared.render_ring_image(percent, color), size=0.97)
++            self.set_background_color(shared.COLOR_NONE)
++        else:
++            center_text = shared.humanize_tokens(total_tokens)
++            shared.set_static_icon(self)
++            self.set_background_color(shared.COLOR_NONE)
++
++        cost = day.get("totalCost")
++        if show_cost and cost is not None:
++            bottom_text = f"${cost:.2f}"
++        elif resets_at is not None:
++            bottom_text = self.tr("claude-daily.label.resets-at").format(
++                time=resets_at.strftime("%H:%M")
++            )
++        else:
++            bottom_text = ""
++
++        self.set_center_label(text=center_text, font_size=20, **shared.LABEL_OUTLINE)
++        self.set_bottom_label(text=bottom_text, font_size=11, **shared.LABEL_OUTLINE)
++        return False
+diff -ruN upstream/actions/ClaudeLimits/ClaudeLimits.py current/actions/ClaudeLimits/ClaudeLimits.py
+--- upstream/actions/ClaudeLimits/ClaudeLimits.py	1970-01-01 01:00:00.000000000 +0100
++++ current/actions/ClaudeLimits/ClaudeLimits.py	2026-09-04 14:35:55.560038386 +0200
+@@ -0,0 +1,183 @@
++"""
++Claude Limits - shows Anthropic's own usage percentage for the active account.
++
++Unlike the ccusage-based actions, this reads `claude -p "/usage"`, so there is
++no token limit to configure: the percentage is the one Anthropic computes, for
++whichever account `claude` is currently logged into. It also survives an account
++switch, which the local session logs cannot - they carry no account identifier.
++"""
++
++import threading
++
++import gi
++from loguru import logger as log
++
++gi.require_version("Gtk", "4.0")
++gi.require_version("Adw", "1")
++from gi.repository import Adw, Gtk, GLib
++
++from src.backend.PluginManager.ActionBase import ActionBase
++
++from .. import _shared as shared
++
++WINDOWS = ["session", "week"]
++DEFAULT_WINDOW = "session"
++DEFAULT_REFRESH_SECONDS = 120
++
++
++class ClaudeLimits(ActionBase):
++    def __init__(self, *args, **kwargs):
++        super().__init__(*args, **kwargs)
++        self.has_configuration = True
++
++        self._stop_event = threading.Event()
++        self._worker_thread: threading.Thread | None = None
++
++    # ------------------------------------------------------------------ #
++    # Lifecycle
++    # ------------------------------------------------------------------ #
++
++    def on_ready(self):
++        shared.set_static_icon(self)
++        self.set_top_label(text=self._top_label(), font_size=12, **shared.LABEL_OUTLINE)
++        self.set_center_label(text=self.tr("claude-usage.label.loading"), font_size=20, **shared.LABEL_OUTLINE)
++        self.set_bottom_label(text="", font_size=11, **shared.LABEL_OUTLINE)
++        self._start_worker()
++
++    def on_remove(self):
++        self._stop_event.set()
++
++    def on_key_down(self):
++        threading.Thread(
++            target=self._refresh_once, daemon=True, name="ClaudeLimits-manual-refresh"
++        ).start()
++
++    def tr(self, key: str) -> str:
++        return self.plugin_base.lm.get(key)
++
++    def _top_label(self) -> str:
++        window = self._settings().get("window", DEFAULT_WINDOW)
++        return self.tr(f"claude-limits.label.top.{window}")
++
++    # ------------------------------------------------------------------ #
++    # Settings
++    # ------------------------------------------------------------------ #
++
++    def _settings(self) -> dict:
++        settings = self.get_settings()
++        settings.setdefault("command", shared.DEFAULT_CLAUDE_COMMAND)
++        settings.setdefault("window", DEFAULT_WINDOW)
++        settings.setdefault("refresh_seconds", DEFAULT_REFRESH_SECONDS)
++        self.set_settings(settings)
++        return settings
++
++    def get_config_rows(self) -> list:
++        settings = self._settings()
++
++        command_row = Adw.EntryRow(title=self.tr("claude-limits.command.title"))
++        command_row.set_text(str(settings.get("command", shared.DEFAULT_CLAUDE_COMMAND)))
++        command_row.connect("notify::text", self._on_command_changed)
++
++        window_row = Adw.ActionRow(
++            title=self.tr("claude-limits.window.title"),
++            subtitle=self.tr("claude-limits.window.subtitle"),
++        )
++        window_dropdown = Gtk.DropDown(
++            model=Gtk.StringList.new([self.tr(f"claude-limits.window.{w}") for w in WINDOWS]),
++            valign=Gtk.Align.CENTER,
++        )
++        current = str(settings.get("window", DEFAULT_WINDOW))
++        window_dropdown.set_selected(WINDOWS.index(current) if current in WINDOWS else 0)
++        window_dropdown.connect("notify::selected", self._on_window_changed)
++        window_row.add_suffix(window_dropdown)
++        window_row.set_activatable_widget(window_dropdown)
++
++        refresh_row = Adw.EntryRow(title=self.tr("claude-usage.refresh.title"))
++        refresh_row.set_text(str(settings.get("refresh_seconds", DEFAULT_REFRESH_SECONDS)))
++        refresh_row.connect("notify::text", self._on_refresh_changed)
++
++        return [command_row, window_row, refresh_row]
++
++    def _on_command_changed(self, entry, _):
++        settings = self.get_settings()
++        settings["command"] = entry.get_text().strip() or shared.DEFAULT_CLAUDE_COMMAND
++        self.set_settings(settings)
++
++    def _on_window_changed(self, dropdown, _):
++        settings = self.get_settings()
++        settings["window"] = WINDOWS[dropdown.get_selected()]
++        self.set_settings(settings)
++        self.set_top_label(text=self._top_label(), font_size=12, **shared.LABEL_OUTLINE)
++
++    def _on_refresh_changed(self, entry, _):
++        settings = self.get_settings()
++        settings["refresh_seconds"] = shared.parse_int(
++            entry.get_text(), DEFAULT_REFRESH_SECONDS, minimum=shared.MIN_REFRESH_SECONDS
++        )
++        self.set_settings(settings)
++
++    # ------------------------------------------------------------------ #
++    # Background refresh
++    # ------------------------------------------------------------------ #
++
++    def _start_worker(self):
++        if self._worker_thread and self._worker_thread.is_alive():
++            return
++        self._stop_event.clear()
++        self._worker_thread = threading.Thread(
++            target=self._worker_loop, daemon=True, name=f"ClaudeLimits-{self.action_id}"
++        )
++        self._worker_thread.start()
++
++    def _worker_loop(self):
++        while not self._stop_event.is_set():
++            self._refresh_once()
++            interval = max(
++                shared.MIN_REFRESH_SECONDS,
++                int(self._settings().get("refresh_seconds", DEFAULT_REFRESH_SECONDS)),
++            )
++            self._stop_event.wait(interval)
++
++    def _refresh_once(self):
++        settings = self._settings()
++        command = settings.get("command", shared.DEFAULT_CLAUDE_COMMAND)
++        window = settings.get("window", DEFAULT_WINDOW)
++        try:
++            percent, reset = shared.fetch_usage(command, window)
++            error = None
++        except Exception as e:  # noqa: BLE001 - surface any failure on the key
++            percent, reset, error = None, "", str(e)
++
++        GLib.idle_add(self._render, percent, reset, error, settings)
++
++    # ------------------------------------------------------------------ #
++    # Rendering
++    # ------------------------------------------------------------------ #
++
++    def _render(self, percent, reset, error, settings):
++        if error is not None:
++            shared.set_static_icon(self)
++            self.set_center_label(text="!", font_size=22, **shared.LABEL_OUTLINE)
++            self.set_bottom_label(text=self.tr("claude-limits.label.error"), font_size=10, **shared.LABEL_OUTLINE)
++            self.set_background_color(shared.COLOR_CRIT)
++            log.error(f"[ClaudeLimits] {error}")
++            return False
++
++        if percent >= 90:
++            color = shared.COLOR_CRIT
++        elif percent >= 70:
++            color = shared.COLOR_WARN
++        else:
++            color = shared.COLOR_OK
++
++        self.set_media(image=shared.render_ring_image(percent, color), size=0.97)
++        self.set_background_color(shared.COLOR_NONE)
++
++        self.set_top_label(text=self._top_label(), font_size=12, **shared.LABEL_OUTLINE)
++        self.set_center_label(text=f"{percent}%", font_size=20, **shared.LABEL_OUTLINE)
++        self.set_bottom_label(
++            text=self.tr("claude-limits.label.resets-at").format(time=reset) if reset else "",
++            font_size=11,
++            **shared.LABEL_OUTLINE,
++        )
++        return False
+diff -ruN upstream/actions/ClaudeWeeklyUsage/ClaudeWeeklyUsage.py current/actions/ClaudeWeeklyUsage/ClaudeWeeklyUsage.py
+--- upstream/actions/ClaudeWeeklyUsage/ClaudeWeeklyUsage.py	2026-09-04 14:35:55.558767793 +0200
++++ current/actions/ClaudeWeeklyUsage/ClaudeWeeklyUsage.py	2026-09-04 14:35:55.559890968 +0200
+@@ -26,11 +26,16 @@
+ 
+ def fetch_current_week(command: str, start_of_week: str, timeout: int = 25) -> dict:
+     """
+-    Runs `<command> weekly --json --offline --last 1 -w <start_of_week>` and
+-    returns the current week's totals as a dict, or {} if ccusage returned
+-    nothing (e.g. no usage at all yet).
++    Runs `<command> weekly --json --offline --last 1` and returns the current
++    week's totals as a dict, or {} if ccusage returned nothing (e.g. no usage
++    at all yet).
++
++    ccusage dropped the -w/--start-of-week flag in 20.x (weeks are now always
++    Monday-based), and passing it makes the whole call fail with "Unknown
++    option '-w'". start_of_week is kept in the signature/settings so the
++    stored config stays valid, but it is no longer sent to ccusage.
+     """
+-    args = f"weekly --json --offline --last 1 -w {start_of_week}"
++    args = "weekly --json --offline --last 1"
+     data = shared.run_ccusage(command, args, timeout=timeout)
+     weeks = data.get("weekly", [])
+     return weeks[0] if weeks else {}
+@@ -38,8 +43,9 @@
+ 
+ def seconds_until_week_end(week_start_date: str | None, start_of_week: str):
+     """
+-    ccusage's 'week' field is a plain YYYY-MM-DD date (the configured
+-    start-of-week day), with no time/timezone - treated as UTC midnight,
++    ccusage's week start is a plain YYYY-MM-DD date, exposed as 'period' in
++    20.x and as 'week' in older releases, with no time/timezone - treated as
++    UTC midnight,
+     consistent with how ccusage timestamps everything else. The week is
+     always exactly 7 days.
+     """
+@@ -236,7 +242,9 @@
+         show_cost = bool(settings.get("show_cost", False))
+         start_of_week = settings.get("start_of_week", DEFAULT_START_OF_WEEK)
+ 
+-        remaining_seconds = seconds_until_week_end(week.get("week"), start_of_week)
++        # 20.x renamed the week-start field from "week" to "period".
++        week_start = week.get("period") or week.get("week")
++        remaining_seconds = seconds_until_week_end(week_start, start_of_week)
+ 
+         if token_limit > 0:
+             percent = round((total_tokens / token_limit) * 100)
+diff -ruN upstream/actions/_shared.py current/actions/_shared.py
+--- upstream/actions/_shared.py	2026-09-04 14:35:55.558782039 +0200
++++ current/actions/_shared.py	2026-09-04 14:35:55.559939920 +0200
+@@ -8,11 +8,16 @@
+ 
+ import json
+ import os
++import re
+ import subprocess
+ 
+ from PIL import Image, ImageDraw
+ 
+ DEFAULT_COMMAND = "npx --yes ccusage@latest"
++# `claude -p "/usage"` runs the in-session slash command headlessly. It reports
++# Anthropic's own server-side percentages for the active account, so there is no
++# token limit to calibrate - and it costs nothing (num_turns 0, no model call).
++DEFAULT_CLAUDE_COMMAND = "claude"
+ DEFAULT_REFRESH_SECONDS = 60
+ MIN_REFRESH_SECONDS = 15
+ 
+@@ -106,7 +111,7 @@
+     return result
+ 
+ 
+-def run_ccusage(command: str, args: str, timeout: int = 25) -> dict:
++def run_host_json(command: str, args: str, timeout: int = 25) -> dict:
+     """
+     Runs `<command> <args>` on the host and returns the parsed JSON stdout.
+ 
+@@ -153,3 +158,40 @@
+     icon_path = os.path.join(action.plugin_base.PATH, "assets", "icon.png")
+     if os.path.isfile(icon_path):
+         action.set_media(media_path=icon_path, size=size, valign=valign)
++
++
++# Kept for the ccusage-based actions, which predate the /usage source.
++run_ccusage = run_host_json
++
++# "Current session: 24% used · resets Sep 4, 5:50pm (Europe/Paris)"
++USAGE_LINES = {
++    "session": re.compile(r"Current session:\s*(\d+)%\s*used(?:\s*.\s*resets\s*([^(\n]+))?"),
++    "week": re.compile(r"Current week \(all models\):\s*(\d+)%\s*used(?:\s*.\s*resets\s*([^(\n]+))?"),
++}
++
++
++def fetch_usage(command: str, window: str, timeout: int = 30) -> tuple[int, str]:
++    """
++    Runs `<command> -p --output-format json "/usage"` and returns
++    (percent, reset_label) for the requested window ("session" or "week").
++
++    Raises RuntimeError if the command fails or the line can't be found - the
++    wording of /usage is not a stable API, so a miss must surface on the key
++    rather than silently render 0%.
++    """
++    data = run_host_json(command, '-p --output-format json "/usage"', timeout=timeout)
++    text = data.get("result") or ""
++
++    match = USAGE_LINES[window].search(text)
++    if not match:
++        raise RuntimeError(f"no '{window}' line in /usage output")
++
++    percent = int(match.group(1))
++    reset = (match.group(2) or "").strip().rstrip(".")
++
++    # Session resets the same day, so the date half is noise on a 72px key;
++    # the weekly one needs it. "Sep 4, 5:50pm" -> "5:50pm" / kept whole.
++    if window == "session" and "," in reset:
++        reset = reset.split(",", 1)[1].strip()
++
++    return percent, reset
+diff -ruN upstream/locales/de_DE.json current/locales/de_DE.json
+--- upstream/locales/de_DE.json	2026-09-04 14:35:55.558873442 +0200
++++ current/locales/de_DE.json	2026-09-04 14:35:55.560165345 +0200
+@@ -2,31 +2,42 @@
+     "plugin.name": "Claude Usage",
+     "actions.claude-usage.name": "Claude-Nutzung",
+     "actions.claude-weekly-usage.name": "Claude-Wochennutzung",
+-
+     "claude-usage.command.title": "ccusage-Befehl",
+     "claude-usage.command.subtitle": "Wie ccusage aufgerufen wird, z. B. \"npx --yes ccusage@latest\" oder einfach \"ccusage\", falls global installiert",
+-
+     "claude-usage.token-limit.title": "Token-Limit für 100 %",
+     "claude-usage.token-limit.subtitle": "Anzahl Tokens, die als volles 5-Stunden-Limit deines Plans gelten. Bei 0 wird stattdessen nur die rohe Token-Anzahl angezeigt.",
+-
+     "claude-usage.refresh.title": "Aktualisierungsintervall (Sekunden, min. 15)",
+-
+     "claude-usage.show-cost.title": "Kosten statt Restzeit anzeigen",
+     "claude-usage.show-cost.subtitle": "Untere Beschriftung zeigt die Kosten (USD) statt der verbleibenden Zeit",
+-
+     "claude-usage.label.top": "Claude",
+     "claude-usage.label.loading": "…",
+     "claude-usage.label.no-block": "Kein aktiver Block",
+     "claude-usage.label.error": "ccusage-Fehler",
+     "claude-usage.label.time-left": "{time} übrig",
+-
+     "claude-weekly.token-limit.title": "Token-Limit für 100 %",
+     "claude-weekly.token-limit.subtitle": "Anzahl Tokens, die als volles wöchentliches Limit deines Plans gelten. Nur eine grobe Schätzung — Anthropics tatsächliches Wochenlimit basiert auf Rechenzeit, nicht auf rohen Tokens. Bei 0 wird stattdessen nur die rohe Token-Anzahl angezeigt.",
+-
+     "claude-weekly.start-of-week.title": "Woche beginnt am",
+     "claude-weekly.start-of-week.subtitle": "Sollte dem Tag entsprechen, an dem dein wöchentliches Limit tatsächlich zurückgesetzt wird — nicht zwingend Montag/Sonntag",
+-
+     "claude-weekly.label.top": "Claude Woche",
+     "claude-weekly.label.no-data": "Keine Daten diese Woche",
+-    "claude-weekly.label.error": "ccusage-Fehler"
++    "claude-weekly.label.error": "ccusage-Fehler",
++    "actions.claude-daily-usage.name": "Claude Tagesnutzung",
++    "claude-daily.token-limit.title": "Token-Limit für 100%",
++    "claude-daily.token-limit.subtitle": "Tokens, die dem vollen Tageslimit deines Plans entsprechen. Anthropics echtes Limit basiert auf Rechenzeit, nicht auf reinen Tokens - also nur eine Schätzung. Bei 0 wird statt eines Prozentwerts die reine Token-Zahl angezeigt.",
++    "claude-daily.show-cost.title": "Kosten statt Reset-Zeit anzeigen",
++    "claude-daily.show-cost.subtitle": "Unteres Label zeigt die heutigen Kosten (USD) statt des Tageswechsels",
++    "claude-daily.label.top": "Claude Tag",
++    "claude-daily.label.no-data": "Heute keine Daten",
++    "claude-daily.label.error": "ccusage-Fehler",
++    "claude-daily.label.resets-at": "Reset {time}",
++    "actions.claude-limits.name": "Claude-Limits",
++    "claude-limits.command.title": "claude-Befehl",
++    "claude-limits.window.title": "Zeitfenster",
++    "claude-limits.window.subtitle": "Welches Limit angezeigt wird. /usage liefert diese zwei; einen Tageswert gibt es nicht.",
++    "claude-limits.window.session": "Aktuelle Sitzung",
++    "claude-limits.window.week": "Aktuelle Woche",
++    "claude-limits.label.top.session": "Claude",
++    "claude-limits.label.top.week": "Claude Woche",
++    "claude-limits.label.resets-at": "↻ {time}",
++    "claude-limits.label.error": "/usage fehlgeschlagen"
+ }
+diff -ruN upstream/locales/en_US.json current/locales/en_US.json
+--- upstream/locales/en_US.json	2026-09-04 14:35:55.558880846 +0200
++++ current/locales/en_US.json	2026-09-04 14:35:55.560174853 +0200
+@@ -2,31 +2,42 @@
+     "plugin.name": "Claude Usage",
+     "actions.claude-usage.name": "Claude Usage",
+     "actions.claude-weekly-usage.name": "Claude Weekly Usage",
+-
+     "claude-usage.command.title": "ccusage command",
+     "claude-usage.command.subtitle": "How to invoke ccusage, e.g. \"npx --yes ccusage@latest\" or just \"ccusage\" if installed globally",
+-
+     "claude-usage.token-limit.title": "Token limit for 100%",
+     "claude-usage.token-limit.subtitle": "Tokens that count as the full 5-hour limit for your plan. Leave at 0 to just show the raw token count instead of a percentage.",
+-
+     "claude-usage.refresh.title": "Refresh interval (seconds, min. 15)",
+-
+     "claude-usage.show-cost.title": "Show cost instead of time remaining",
+     "claude-usage.show-cost.subtitle": "Bottom label shows the cost (USD) instead of the time left",
+-
+     "claude-usage.label.top": "Claude",
+     "claude-usage.label.loading": "…",
+     "claude-usage.label.no-block": "No active block",
+     "claude-usage.label.error": "ccusage error",
+     "claude-usage.label.time-left": "{time} left",
+-
+     "claude-weekly.token-limit.title": "Token limit for 100%",
+     "claude-weekly.token-limit.subtitle": "Tokens that count as your plan's full weekly limit. This is a rough estimate - Anthropic's actual weekly cap is based on compute time, not raw tokens. Leave at 0 to just show the raw token count instead of a percentage.",
+-
+     "claude-weekly.start-of-week.title": "Week starts on",
+     "claude-weekly.start-of-week.subtitle": "Should match the day your account's weekly limit actually resets on, not necessarily Monday/Sunday",
+-
+     "claude-weekly.label.top": "Claude Week",
+     "claude-weekly.label.no-data": "No data this week",
+-    "claude-weekly.label.error": "ccusage error"
++    "claude-weekly.label.error": "ccusage error",
++    "actions.claude-daily-usage.name": "Claude Daily Usage",
++    "claude-daily.token-limit.title": "Token limit for 100%",
++    "claude-daily.token-limit.subtitle": "Tokens that count as your plan's full daily limit. Anthropic's real cap is based on compute time, not raw tokens, so treat this as an estimate. Leave at 0 to just show the raw token count instead of a percentage.",
++    "claude-daily.show-cost.title": "Show cost instead of reset time",
++    "claude-daily.show-cost.subtitle": "Bottom label shows today's cost (USD) instead of when the day rolls over",
++    "claude-daily.label.top": "Claude Day",
++    "claude-daily.label.no-data": "No data today",
++    "claude-daily.label.error": "ccusage error",
++    "claude-daily.label.resets-at": "resets {time}",
++    "actions.claude-limits.name": "Claude Limits",
++    "claude-limits.command.title": "claude command",
++    "claude-limits.window.title": "Window",
++    "claude-limits.window.subtitle": "Which limit to show. /usage reports these two; there is no daily figure.",
++    "claude-limits.window.session": "Current session",
++    "claude-limits.window.week": "Current week",
++    "claude-limits.label.top.session": "Claude",
++    "claude-limits.label.top.week": "Claude Week",
++    "claude-limits.label.resets-at": "↻ {time}",
++    "claude-limits.label.error": "/usage failed"
+ }
+diff -ruN upstream/main.py current/main.py
+--- upstream/main.py	2026-09-04 14:35:55.558888039 +0200
++++ current/main.py	2026-09-04 14:35:55.560183830 +0200
+@@ -3,8 +3,8 @@
+ 
+ Shows Claude Code usage (via ccusage) on a Stream Deck key as a
+ Claude-branded progress ring: percentage of a configurable token limit (or
+-the raw token count), plus time remaining. Two actions: the current 5-hour
+-session block, and the current week.
++the raw token count), plus time remaining. Three actions: the current
++5-hour session block, the current day, and the current week.
+ """
+ 
+ from src.backend.PluginManager.PluginBase import PluginBase
+@@ -19,7 +19,9 @@
+ # "actions" module/package in sys.modules that can collide with any other
+ # installed plugin that also ships an "actions" folder (e.g. the official OS
+ # plugin), silently breaking the import - and with it, the whole plugin.
++from .actions.ClaudeLimits.ClaudeLimits import ClaudeLimits
+ from .actions.ClaudeUsage.ClaudeUsage import ClaudeUsage
++from .actions.ClaudeDailyUsage.ClaudeDailyUsage import ClaudeDailyUsage
+ from .actions.ClaudeWeeklyUsage.ClaudeWeeklyUsage import ClaudeWeeklyUsage
+ 
+ 
+@@ -31,6 +33,19 @@
+         self.lm.set_to_os_default()
+         self.lm.set_fallback_language("en_US")
+ 
++        self.claude_limits_holder = ActionHolder(
++            plugin_base=self,
++            action_base=ClaudeLimits,
++            action_id_suffix="ClaudeLimits",
++            action_name=self.lm.get("actions.claude-limits.name"),
++            action_support={
++                Input.Key: ActionInputSupport.SUPPORTED,
++                Input.Dial: ActionInputSupport.UNTESTED,
++                Input.Touchscreen: ActionInputSupport.UNTESTED,
++            },
++        )
++        self.add_action_holder(self.claude_limits_holder)
++
+         self.claude_usage_holder = ActionHolder(
+             plugin_base=self,
+             action_base=ClaudeUsage,
+@@ -44,6 +59,19 @@
+         )
+         self.add_action_holder(self.claude_usage_holder)
+ 
++        self.claude_daily_usage_holder = ActionHolder(
++            plugin_base=self,
++            action_base=ClaudeDailyUsage,
++            action_id_suffix="ClaudeDailyUsage",
++            action_name=self.lm.get("actions.claude-daily-usage.name"),
++            action_support={
++                Input.Key: ActionInputSupport.SUPPORTED,
++                Input.Dial: ActionInputSupport.UNTESTED,
++                Input.Touchscreen: ActionInputSupport.UNTESTED,
++            },
++        )
++        self.add_action_holder(self.claude_daily_usage_holder)
++
+         self.claude_weekly_usage_holder = ActionHolder(
+             plugin_base=self,
+             action_base=ClaudeWeeklyUsage,

@@ -25,6 +25,10 @@ for skill_dir in "$DOTFILES_DIR/claude/skills"/*/; do
     ln -sfn "$skill_dir" ~/.claude/skills/"$skill_name"
 done
 
+# StreamController
+echo "→ StreamController plugin patches..."
+"$DOTFILES_DIR/streamcontroller/install.sh"
+
 echo ""
 echo "✓ Dotfiles installed"
 echo ""
