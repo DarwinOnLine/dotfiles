@@ -14,3 +14,7 @@ docker-compose.override.yml
 # Editors
 *.swp
 *.swo
+
+# Python
+__pycache__/
+*.pyc

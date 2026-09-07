@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "file=\"$CLAUDE_FILE_PATH\"; if echo \"$file\" | grep -qE '\\.php$'; then bash ~/dotfiles/claude/hooks/php-quality.sh \"$file\"; elif echo \"$file\" | grep -qE '\\.(ts|tsx|js|jsx)$'; then for cfg in .eslintrc.js .eslintrc.cjs .eslintrc.json .eslintrc.yml eslint.config.js eslint.config.mjs eslint.config.ts; do if [ -f \"$cfg\" ]; then npx eslint --no-warn-ignored \"$file\" 2>&1 | head -20; break; fi; done; fi"
+            "command": "file=\"$CLAUDE_FILE_PATH\"; if echo \"$file\" | grep -qE '\\.php$'; then bash ~/dotfiles/claude/hooks/php-quality.sh \"$file\"; elif echo \"$file\" | grep -qE '\\.py$'; then bash ~/dotfiles/claude/hooks/py-quality.sh \"$file\"; elif echo \"$file\" | grep -qE '\\.(ts|tsx|js|jsx)$'; then for cfg in .eslintrc.js .eslintrc.cjs .eslintrc.json .eslintrc.yml eslint.config.js eslint.config.mjs eslint.config.ts; do if [ -f \"$cfg\" ]; then npx eslint --no-warn-ignored \"$file\" 2>&1 | head -20; break; fi; done; fi"
           }
         ]
       }
@@ -32,14 +32,29 @@
           }
         ]
       }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/dotfiles/claude/hooks/context-guard.py",
+            "timeout": 5
+          }
+        ]
+      }
     ]
   },
   "effortLevel": "medium",
   "tui": "fullscreen",
   "skipDangerousModePermissionPrompt": true,
+  "skipWorkflowUsageWarning": true,
   "theme": "dark",
   "remoteControlAtStartup": false,
   "agentPushNotifEnabled": true,
   "skipAutoPermissionPrompt": true,
-  "skipWorkflowUsageWarning": true
+  "statusLine": {
+    "type": "command",
+    "command": "python3 ~/dotfiles/claude/hooks/statusline.py"
+  }
 }

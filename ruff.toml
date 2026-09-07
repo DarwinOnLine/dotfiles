@@ -1,0 +1,9 @@
+# Ruff config for the dotfiles' own Python (Claude Code hooks).
+# Opt-in marker for claude/hooks/py-quality.sh: without a config file, the hook
+# stays silent, so this file is what turns linting on for this repo.
+
+line-length = 88
+target-version = "py39"  # hooks must run on whatever python3 the host ships
+
+[lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
