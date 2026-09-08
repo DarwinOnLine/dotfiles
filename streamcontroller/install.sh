@@ -17,7 +17,7 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Store commit each patch was generated against (matches the plugin's VERSION file).
 declare -A PINNED=(
     [dev_enjxz_ClaudeUsage]=d241cfe4babb0b176060e7f65d0578ead586ad1e
-    [com_ReneLu_spotifyControl]=4125e16a261bbbe26d5e19280bf163bc3026192e
+    [com_core447_MicMute]=f7eb9541bdcd681780c8b8b860fc6be9e335750f
 )
 
 for candidate in \

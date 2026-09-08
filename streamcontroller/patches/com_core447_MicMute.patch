@@ -1,0 +1,49 @@
+diff -ruN upstream/actions/ToggleMute/ToggleMute.py current/actions/ToggleMute/ToggleMute.py
+--- upstream/actions/ToggleMute/ToggleMute.py	2026-08-14 09:38:54.000000000 +0200
++++ current/actions/ToggleMute/ToggleMute.py	2026-09-08 14:52:23.950951453 +0200
+@@ -16,6 +16,18 @@
+ 
+ import pulsectl
+ 
++
++def input_sources(pulse):
++    """Real capture devices only, monitor sources excluded.
++
++    A monitor source mirrors an output. On cards where the microphones and the
++    speaker/HDMI sinks share one device.nick - the Ryzen HD Audio controller
++    does - a monitor cannot be told apart from a mic by nickname, so muting
++    "the mic" also muted desktop capture, and get_mute_state returned whichever
++    source the iteration happened to reach first.
++    """
++    return [s for s in pulse.source_list() if not s.name.endswith(".monitor")]
++
+ class ToggleMute(ActionBase):
+     def __init__(self, *args, **kwargs):
+         super().__init__(*args, **kwargs)
+@@ -31,7 +43,7 @@
+             all_muted = True
+             all_unmuted = True
+ 
+-            for source in pulse.source_list():
++            for source in input_sources(pulse):
+                 # Get the mute state of the microphone
+                 muted = source.mute
+                 if muted:
+@@ -54,7 +66,7 @@
+         device_nick: str if None all microphones will be configured
+         """
+         with pulsectl.Pulse('mute-microphone') as pulse:
+-            for source in pulse.source_list():
++            for source in input_sources(pulse):
+                 if device_nick is not None and source.proplist.get("device.nick") != device_nick:
+                     continue
+                 pulse.source_mute(source.index, state)
+@@ -132,7 +144,7 @@
+         self.device_model.clear()
+         self.device_model.append([self.plugin_base.lm.get("actions.toggle-mute.all"), True])
+         with pulsectl.Pulse('mute-microphone') as pulse:
+-            for source in pulse.source_list():
++            for source in input_sources(pulse):
+                 self.device_model.append([source.proplist.get("device.nick"), False])
+ 
+     def load_config_settings(self):

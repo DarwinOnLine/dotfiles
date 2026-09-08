@@ -2,7 +2,7 @@
 
 Fixes for two StreamController plugins installed from its built-in store.
 
-Both are third-party plugins, so this directory holds **patches** rather than
+Both come from the store, so this directory holds **patches** rather than
 vendored copies: the store overwrites the plugin directory on every update, and
 a patch makes it obvious what was changed and why.
 
@@ -47,28 +47,31 @@ Pinned to upstream `d241cfe`.
 unused - keep them if you ever want token counts or a cost in dollars, which
 `/usage` does not report.
 
-### `com_ReneLu_spotifyControl` (Spotify)
+### `com_core447_MicMute` (microphone mute)
 
-Pinned to upstream `4125e16`.
+Pinned to upstream `f7eb954`.
 
-Every action cached the plugin's backend reference in its `__init__`:
+Both the mute toggle and the state shown on the key iterated over
+`pulse.source_list()`, which includes **monitor sources** - the virtual capture
+device every output exposes so that screen recorders can grab desktop audio.
 
-```python
-self.backend = self.plugin_base.backend   # None at this point
-```
+The plugin only knows how to target a device by `device.nick`, and on this
+machine that does not discriminate: the two microphones and the speaker plus
+four HDMI monitors of the Ryzen HD Audio controller all report
+`HD-Audio Generic`. Two consequences:
 
-StreamController builds the actions ~125ms after spawning the backend, but the
-backend needs ~250ms to connect - so the snapshot was `None` for the whole
-session and every tick logged "Spotify backend is not available", leaving the
-keys blank. Replaced with a property that resolves live.
+- muting "the mic" also muted desktop capture, silently;
+- `get_mute_state` returns early on its first nickname match, which was
+  whichever source `source_list()` happened to yield first - a monitor as
+  often as a mic - so the key showed the wrong state. With `all` set instead,
+  a single disagreeing source makes it return `None` and the key renders its
+  error icon, which a Bluetooth headset or an AirPlay sink connecting is
+  enough to trigger.
 
-The property needs a **setter**: `ActionCore.__init__` does `self.backend = None`
-for actions that spawn their own backend, and a read-only property turns that
-into `AttributeError: property 'backend' has no setter` at construction. The
-setter ignores the assignment - these actions proxy the plugin's backend.
-
-Each class also declared `backend = None` as a class attribute *after* the
-property, which silently shadowed it; those declarations are removed.
+Fixed with an `input_sources()` helper that drops anything whose name ends in
+`.monitor`, used by the toggle, the state read and the device dropdown. The
+key is configured with `all` - after the filter that means both real
+microphones and nothing else.
 
 ## Re-generating a patch after an upstream update
 
@@ -88,8 +91,10 @@ are generated locally and are not in the upstream repo.
 
 ## Not covered here
 
-- **Plugin settings** (Spotify client ID, redirect port) live in
+- **Plugin settings** live in
   `~/.var/app/com.core447.StreamController/data/settings/plugins/` and are not
-  synced. Re-enter them via Settings -> Plugins -> Spotify Control -> Open Settings.
+  synced. Re-enter them via Settings -> Plugins -> <plugin> -> Open Settings.
+- **`com_core447_MediaPlugin`** (now playing, over MPRIS) is installed from the
+  store unpatched, so it is not listed here - it needs no fix.
 - **Key layout** (`data/pages/*.json`) is tied to the deck's serial number, and
   StreamController rewrites it on exit - so it is not synced either.
