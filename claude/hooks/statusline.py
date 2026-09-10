@@ -5,8 +5,11 @@ The gauge is the point. Context size is what actually drives token spend (every
 turn re-sends the whole conversation), but it is invisible by default -- you
 only notice when auto-compact fires. Showing it makes the drift legible.
 
-CLAUDE_CTX_REF sets the reference window in tokens (default 200000). The bar
-fills toward it; past it, the readout goes red and stays red.
+The bar fills toward the model's real context window, which Claude Code
+reports as `context_window.context_window_size` (1M on Opus 5, 200k elsewhere)
+-- hardcoding 200000 painted the bar red on a session that was 5% full.
+CLAUDE_CTX_REF overrides it when you want to hold yourself to a tighter budget
+than the model allows; past the reference, the readout goes red and stays red.
 
 The 5h / 7d segments mirror `/usage`: percent of the plan window consumed and
 how long until it resets, straight from the `rate_limits` field Claude Code
@@ -29,7 +32,8 @@ RED = "\033[31m"
 BOLD_RED = "\033[1;31m"
 CYAN = "\033[36m"
 
-REF = int(os.environ.get("CLAUDE_CTX_REF", "200000"))
+CTX_REF_OVERRIDE = os.environ.get("CLAUDE_CTX_REF")
+CTX_REF_FALLBACK = 200000
 BAR_WIDTH = 8
 
 
@@ -46,8 +50,41 @@ def git_branch(cwd):
         return None
 
 
-def gauge(tokens):
-    ratio = tokens / REF
+def compact(tokens):
+    if tokens >= 1000000:
+        return f"{tokens / 1000000:.10g}M".replace(".0M", "M")
+    return f"{tokens // 1000}k"
+
+
+def context_size(payload):
+    """Return (tokens in context, reference window) from the payload.
+
+    `context_window` is authoritative and free; the transcript scan stays as a
+    fallback for payloads that predate the field.
+    """
+    window = payload.get("context_window") or {}
+    tokens = window.get("total_input_tokens")
+    if not tokens:
+        usage = window.get("current_usage") or {}
+        tokens = sum(
+            usage.get(key, 0)
+            for key in (
+                "input_tokens",
+                "cache_read_input_tokens",
+                "cache_creation_input_tokens",
+            )
+        )
+    if not tokens:
+        tokens = read_context_tokens(payload.get("transcript_path"))
+    if CTX_REF_OVERRIDE:
+        ref = int(CTX_REF_OVERRIDE)
+    else:
+        ref = window.get("context_window_size") or CTX_REF_FALLBACK
+    return tokens, ref
+
+
+def gauge(tokens, ref):
+    ratio = tokens / ref
     filled = min(BAR_WIDTH, int(ratio * BAR_WIDTH))
     bar = "█" * filled + "░" * (BAR_WIDTH - filled)
     if ratio < 0.5:
@@ -58,7 +95,7 @@ def gauge(tokens):
         color = RED
     else:
         color = BOLD_RED
-    return f"{color}{bar} {tokens // 1000}k{RESET}"
+    return f"{color}{bar} {compact(tokens)}{DIM}/{compact(ref)}{RESET}"
 
 
 def human_delta(ts):
@@ -113,8 +150,8 @@ def main():
     if branch:
         parts.append(f"{DIM}⎇ {branch}{RESET}")
 
-    tokens = read_context_tokens(payload.get("transcript_path"))
-    parts.append(gauge(tokens) if tokens else f"{DIM}░░░░░░░░ --{RESET}")
+    tokens, ref = context_size(payload)
+    parts.append(gauge(tokens, ref) if tokens else f"{DIM}░░░░░░░░ --{RESET}")
 
     rate_limits = payload.get("rate_limits") or {}
     for label, key in (("5h", "five_hour"), ("7j", "seven_day")):
