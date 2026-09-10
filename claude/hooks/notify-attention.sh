@@ -32,6 +32,8 @@ CWD="$(json '.cwd')"
 PROJECT="$(basename "$CWD")"
 
 SESSION="$(json '.session_id')"
+# The toast watcher re-execs us as `focus <session-id>`: no stdin payload there.
+[ "$ACTION" != focus ] || SESSION="${2:-$SESSION}"
 [ -n "$SESSION" ] || SESSION="${CLAUDE_SESSION_ID:-unknown}"
 STATE_DIR="${XDG_RUNTIME_DIR:-/tmp}/claude-notify"
 STATE_FILE="$STATE_DIR/$SESSION"
@@ -72,6 +74,18 @@ konsole_ok() {
     && [ -n "${KONSOLE_DBUS_SESSION:-}" ] && [ -n "${KONSOLE_DBUS_WINDOW:-}" ]
 }
 
+# Turn a rendered Konsole tab title into the bare conversation topic: drop the
+# "%d : " prefix and " (%n)" suffix of the user's title format, then every
+# leading non-alphanumeric character. That last step removes our own 🔔 and,
+# crucially, Claude Code's status glyph (◑ ◐ ✳ …) which is an ANIMATED spinner —
+# keeping it would make the value stale within a second.
+normalize_topic() {
+  local t="$1"
+  t="${t##*" : "}"
+  t="${t%" ("*")"}"
+  printf '%s' "$t" | sed 's/^[^[:alnum:]]*//'
+}
+
 # Session.title(1) is the tab title, which is where Claude Code puts the topic.
 konsole_tab_title() {
   konsole_ok || return 1
@@ -85,14 +99,22 @@ konsole_tab_title() {
 # Optional dependency: `sudo dnf install kdotool`.
 konsole_raise() {
   command -v kdotool >/dev/null 2>&1 || return 1
-  local id
-  # The window title carries the 🔔 marker, so prefer an exact match when
-  # several Konsole windows are open; fall back to any Konsole window.
-  id="$(kdotool search --name "$MARKER" 2>/dev/null | head -1)"
-  [ -n "$id" ] || id="$(kdotool search --class konsole 2>/dev/null | head -1)"
-  [ -n "$id" ] || return 1
-  kdotool windowactivate "$id" >/dev/null 2>&1
-  dbg "kdotool windowactivate $id rc=$?"
+  local want="$1" id name match="" n=0
+  # $want is this conversation's topic, which is unique across windows. Matching
+  # on the 🔔 marker instead would find *any* pending conversation, and with
+  # several waiting at once that activates the wrong window. Exact substring
+  # comparison in the shell avoids escaping the topic into a kdotool regex.
+  for id in $(kdotool search --class konsole 2>/dev/null); do
+    name="$(kdotool getwindowname "$id" 2>/dev/null)"
+    case "$name" in *"$want"*) match="$id"; n=$((n + 1)) ;; esac
+  done
+  if [ -n "$want" ] && [ "$n" -eq 1 ]; then
+    kdotool windowactivate "$match" >/dev/null 2>&1
+    dbg "kdotool windowactivate $match rc=$? (topic match)"
+    return 0
+  fi
+  dbg "topic '$want' matched $n window(s), refusing to guess"
+  return 1
 }
 
 # Switch Konsole to this conversation's tab, then bring the window up.
@@ -106,7 +128,12 @@ konsole_focus() {
   out="$("$QDBUS" "$KONSOLE_DBUS_SERVICE" "$KONSOLE_DBUS_WINDOW" \
     org.kde.konsole.Window.setCurrentSession "$sid" 2>&1)"; rc=$?
   dbg "setCurrentSession($sid) rc=$rc out='$out'"
-  konsole_raise && return 0
+  # A Konsole window's title mirrors its ACTIVE tab, so it only names this
+  # conversation once setCurrentSession has run — and Konsole repaints it
+  # asynchronously, hence the pause. The topic is re-read live rather than taken
+  # from the state file, which goes stale as soon as the topic changes.
+  sleep 0.4
+  konsole_raise "$(normalize_topic "$(konsole_tab_title)")" && return 0
   out="$("$QDBUS" "$KONSOLE_DBUS_SERVICE" "/konsole/MainWindow_$wnum" \
     org.qtproject.Qt.QWidget.raise 2>&1)"; rc=$?
   dbg "MainWindow_$wnum.raise rc=$rc out='$out' (no-op under Wayland)"
@@ -114,15 +141,43 @@ konsole_focus() {
 
 # --- terminal title fallback --------------------------------------------------
 # Hook stdout is captured by Claude Code, so escape sequences must go straight
-# to the controlling terminal. OSC 0 = window title, OSC 30 = Konsole tab title.
+# to the tab pty when it is not. OSC 0 = window title, and it feeds Konsole %w.
+# Claude Code runs hooks WITHOUT a controlling terminal, so /dev/tty is absent
+# and escape sequences have nowhere to go. Konsole hands us a way out:
+# Session.processId() is the shell running in the tab, and its fd 1 is that
+# tab's pty (/dev/pts/N), writable by the same user. That is the same channel
+# Claude Code itself uses for titles, so it stays consistent — and unlike
+# Session.setTitle it does not clobber Konsole's tab title format.
+title_sink() {
+  if ( exec 2>/dev/null; : >/dev/tty ); then echo /dev/tty; return 0; fi
+  konsole_ok || return 1
+  local pid
+  pid="$("$QDBUS" "$KONSOLE_DBUS_SERVICE" "$KONSOLE_DBUS_SESSION" \
+    org.kde.konsole.Session.processId 2>/dev/null)"
+  case "$pid" in ''|*[!0-9]*) return 1 ;; esac
+  [ -w "/proc/$pid/fd/1" ] || return 1
+  echo "/proc/$pid/fd/1"
+}
+
 tty_write() {
-  ( exec 2>/dev/null; printf '%b' "$1" >/dev/tty ) || true
+  local sink
+  sink="$(title_sink)" || { dbg "no title sink (no tty, no konsole pty)"; return 1; }
+  if ( exec 2>/dev/null; printf '%b' "$1" >"$sink" ); then
+    dbg "title written to $sink"
+    return 0
+  fi
+  dbg "title write to $sink FAILED"
+  return 1
 }
 
 # Deliberately NOT org.kde.konsole.Session.setTitle: that pins the tab title
 # and disables Konsole's dynamic title format for the rest of the session.
+# OSC 0 only, deliberately. It sets the window title and feeds Konsole's %w
+# placeholder, so the marker shows up in the tab through the user's own title
+# format. OSC 30 would also work but Konsole implements it by *overwriting* the
+# tab title format with a literal, permanently killing the dynamic format.
 set_title() {
-  tty_write "\033]0;$1\007\033]30;$1\007"
+  tty_write "\033]0;$1\007"
 }
 
 # --- sound --------------------------------------------------------------------
@@ -195,7 +250,7 @@ notify_desktop() {
             [ -n "${CLAUDE_NOTIFY_DEBUG:-}" ] && \
               printf "%s [watcher] picked=%s\n" "$(date +%H:%M:%S)" "${picked:-<none>}" \
                 >>"$5/debug.log" 2>/dev/null
-            [ "$picked" = "focus" ] && exec "$3" focus </dev/null
+            [ "$picked" = "focus" ] && exec "$3" focus "$4" </dev/null
           ' _ "$title" "$body" "$0" "$SESSION" "$STATE_DIR" </dev/null >/dev/null 2>&1 &
       else
         notify-send -a "Claude Code" -i utilities-terminal -u normal -t 15000 \
@@ -232,13 +287,7 @@ case "$ACTION" in
 
   *)
     # Read the tab title *before* marking it: that is the conversation topic.
-    topic="$(konsole_tab_title)"
-    topic="${topic#"$MARKER"}"
-    # Strip Konsole's dynamic title decorations ("%d : " prefix, " (%n)" suffix)
-    # so the toast shows the topic alone.
-    topic="${topic##*" : "}"
-    topic="${topic%" ("*")"}"
-    topic="${topic# }"
+    topic="$(normalize_topic "$(konsole_tab_title)")"
     case "$topic" in
       ""|*"$PROJECT"*) label="${topic:-$PROJECT}" ;;
       *)               label="$topic — $PROJECT" ;;
@@ -246,6 +295,11 @@ case "$ACTION" in
 
     mkdir -p "$STATE_DIR" 2>/dev/null && printf '%s' "$topic" >"$STATE_FILE" 2>/dev/null
     set_title "${MARKER}${topic:-Claude Code — $PROJECT}"
+
+    # Konsole flags the tab (and its taskbar entry) on a bell, and that flag is
+    # Konsole's own state, so Claude Code's constant title repaints cannot wipe
+    # it. Set Konsole's bell mode to visual/none to keep it silent.
+    tty_write '\a'
 
     play_sound &
     notify_desktop "🔔 $label" "$MESSAGE"$'\n'"$CWD"
