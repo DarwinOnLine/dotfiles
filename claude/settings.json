@@ -40,10 +40,31 @@
             "type": "command",
             "command": "python3 ~/dotfiles/claude/hooks/context-guard.py",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "bash ~/dotfiles/claude/hooks/notify-attention.sh clear",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/dotfiles/claude/hooks/notify-attention.sh notify",
+            "timeout": 5
           }
         ]
       }
     ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "python3 ~/dotfiles/claude/hooks/statusline.py",
+    "refreshInterval": 30
   },
   "effortLevel": "medium",
   "tui": "fullscreen",
@@ -53,9 +74,38 @@
   "remoteControlAtStartup": false,
   "agentPushNotifEnabled": true,
   "skipAutoPermissionPrompt": true,
-  "statusLine": {
-    "type": "command",
-    "command": "python3 ~/dotfiles/claude/hooks/statusline.py",
-    "refreshInterval": 30
+  "autoMode": {
+    "environment": [
+      "### Org-wide",
+      "**Organization**: BeHigh (behigh-fr) — GitLab org, remote `gitlab.com:behigh-fr/saas-v2.git`",
+      "**Cloud provider(s)**: None configured",
+      "**Repository visibility**: assume private (GitLab remote `behigh-fr/saas-v2`, not queryable via gh — GitLab host; no visibility check available, defaulting per shipped default)",
+      "**Internal sharing / snippet hosting**: GitLab Pages published from `main` (rule-traceability sheets, `pages` job) — scoped to this repo only",
+      "**Secrets management**: None configured — `.env*` and `/storage/*.key` are gitignored locally; no secret manager identified",
+      "**Default / protected branches**: `main` (default). Explicitly NOT protected — CLAUDE.md states `main` is unprotected and deploys directly on push, with MR-gated CI only for changes touching `.gitlab-ci.yml`/CI image/jobs",
+      "**CI/CD deploy targets**: GitLab CI (`.gitlab-ci.yml`) — qualification environment runs `APP_ENV=production`; deploy hook runs `legacy:migrate --force` and conditionally `legacy:reseed` + `qualif:anonymise`; CI runner shares its machine with preproduction (per repo docs)",
+      "**Network posture**: None configured",
+      "**Host containment**: None configured — assume ordinary developer machine with open internet",
+      "**Source control**: This repo (`behigh-fr/saas-v2` on gitlab.com) and its `origin` remote only. Related repos named in CLAUDE.md (`behigh-fr/sass` V0, `behigh-fr/app` V1, `behigh-fr/workflow-dev-v2`, `behigh-fr/dev-workflow`, `behigh-fr/design`) are repo-authored references only, not corroborated by usage — not adopted as trusted scope",
+      "**Trusted internal domains**: None configured",
+      "**Trusted cloud buckets**: None configured",
+      "**Key internal services**: None configured",
+      "**Internal package registry**: None configured",
+      "**Sensitive data locations & audiences**: `.env*` files (excluding `*.example`), `/storage/*.key`, and other gitignored secret-like paths in this repo; legacy/production database credentials referenced in `.env.example` (e.g. `LEGACY_DB_*`, `QUALIFICATION_PASSWORD`); production customer data (V0) — never to be pulled onto a dev machine per repo docs; share only with audiences cleared at the [named+specifics] bar",
+      "**Data retention / declassification**: None configured",
+      "**Sensitive remote targets**: any namespace, host, or container whose name carries `prod` or `production` as a whole word or segment; qualification environment runs `APP_ENV=production` and is explicitly flagged as production-equivalent for destructive-command purposes in repo docs",
+      "**Protected deployment namespaces / environments**: qualification environment (runs `APP_ENV=production`); V0 production (`behigh-fr/sass`) — repo docs state V0 must never be modified from this session's context",
+      "**Protected IaC scopes**: IAM, RBAC, networking, quota, and node-pool resources; anything whose name or tag carries `prod` or `production` as a whole word or segment",
+      "### User-specific",
+      "**Primary use of Claude Code**: software development (Laravel/Livewire rewrite project, currently in scoping/cadrage phase per CLAUDE.md)",
+      "**Trusted repo**: `/home/darwin/Projets/Behigh/saas-v2-e09-findings`, the git repo the agent starts in, and its `origin` remote (`gitlab.com:behigh-fr/saas-v2.git`)",
+      "**Org-specific CLIs**: None configured",
+      "routine under this repo's worktree conventions (`git worktree add -b <INITIALES>-<sujet>/<slug> ... main`) — per-lot branches, not a global CLI allowance"
+    ],
+    "soft_deny": [
+      "$defaults",
+      "Bash(git push:* -f) in gitlab.com:behigh-fr/saas-v2.git — main is unprotected and pushes deploy directly; force-push or direct main pushes are high-impact per repo docs",
+      "Bash(php artisan legacy:reseed*) and Bash(php artisan qualif:anonymise*) — destructive/production-equivalent operations against the qualification environment per .env.example"
+    ]
   }
 }
