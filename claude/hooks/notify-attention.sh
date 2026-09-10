@@ -79,9 +79,24 @@ konsole_tab_title() {
     org.kde.konsole.Session.title 1 2>/dev/null
 }
 
-# Switch Konsole to this conversation's tab, then ask the window to come up.
-# setCurrentSession is an app-level call, so it works under Wayland; the
-# QWidget.raise() is best-effort (KWin may refuse focus stealing).
+# Raising a window is the part Wayland does not hand out freely: KWin refuses
+# focus stealing, so org.qtproject.Qt.QWidget.raise() returns rc=0 and does
+# nothing. kdotool talks to KWin's own scripting API, which is allowed to do it.
+# Optional dependency: `sudo dnf install kdotool`.
+konsole_raise() {
+  command -v kdotool >/dev/null 2>&1 || return 1
+  local id
+  # The window title carries the 🔔 marker, so prefer an exact match when
+  # several Konsole windows are open; fall back to any Konsole window.
+  id="$(kdotool search --name "$MARKER" 2>/dev/null | head -1)"
+  [ -n "$id" ] || id="$(kdotool search --class konsole 2>/dev/null | head -1)"
+  [ -n "$id" ] || return 1
+  kdotool windowactivate "$id" >/dev/null 2>&1
+  dbg "kdotool windowactivate $id rc=$?"
+}
+
+# Switch Konsole to this conversation's tab, then bring the window up.
+# setCurrentSession is an app-level call, so it works under Wayland.
 konsole_focus() {
   if ! konsole_ok; then
     dbg "konsole_ok=false qdbus='$QDBUS' svc='${KONSOLE_DBUS_SERVICE:-}' ses='${KONSOLE_DBUS_SESSION:-}' win='${KONSOLE_DBUS_WINDOW:-}'"
@@ -91,9 +106,10 @@ konsole_focus() {
   out="$("$QDBUS" "$KONSOLE_DBUS_SERVICE" "$KONSOLE_DBUS_WINDOW" \
     org.kde.konsole.Window.setCurrentSession "$sid" 2>&1)"; rc=$?
   dbg "setCurrentSession($sid) rc=$rc out='$out'"
+  konsole_raise && return 0
   out="$("$QDBUS" "$KONSOLE_DBUS_SERVICE" "/konsole/MainWindow_$wnum" \
     org.qtproject.Qt.QWidget.raise 2>&1)"; rc=$?
-  dbg "MainWindow_$wnum.raise rc=$rc out='$out'"
+  dbg "MainWindow_$wnum.raise rc=$rc out='$out' (no-op under Wayland)"
 }
 
 # --- terminal title fallback --------------------------------------------------
