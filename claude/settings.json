@@ -55,6 +55,7 @@
   "skipAutoPermissionPrompt": true,
   "statusLine": {
     "type": "command",
-    "command": "python3 ~/dotfiles/claude/hooks/statusline.py"
+    "command": "python3 ~/dotfiles/claude/hooks/statusline.py",
+    "refreshInterval": 30
   }
 }

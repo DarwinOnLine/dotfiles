@@ -7,11 +7,16 @@ only notice when auto-compact fires. Showing it makes the drift legible.
 
 CLAUDE_CTX_REF sets the reference window in tokens (default 200000). The bar
 fills toward it; past it, the readout goes red and stays red.
+
+The 5h / 7d segments mirror `/usage`: percent of the plan window consumed and
+how long until it resets, straight from the `rate_limits` field Claude Code
+puts on the status-line payload.
 """
 
 import os
 import subprocess
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 from ctxlib import read_context_tokens, read_stdin_payload  # noqa: E402
@@ -56,6 +61,38 @@ def gauge(tokens):
     return f"{color}{bar} {tokens // 1000}k{RESET}"
 
 
+def human_delta(ts):
+    """Compact 'time until' rendering for a unix timestamp."""
+    secs = int(ts - time.time())
+    if secs <= 0:
+        return "0m"
+    days, rem = divmod(secs, 86400)
+    hours, minutes = divmod(rem // 60, 60)
+    if days:
+        return f"{days}j{hours}h"
+    if hours:
+        return f"{hours}h{minutes:02d}"
+    return f"{minutes}m"
+
+
+def limit(label, window):
+    """Render one rate-limit window: label, percent used, time to reset."""
+    if not isinstance(window, dict):
+        return None
+    pct = window.get("used_percentage")
+    if pct is None:
+        return None
+    if pct < 60:
+        color = GREEN
+    elif pct < 85:
+        color = YELLOW
+    else:
+        color = RED
+    resets_at = window.get("resets_at")
+    tail = f" {DIM}↻{human_delta(resets_at)}{RESET}" if resets_at else ""
+    return f"{color}{label} {round(pct)}%{RESET}{tail}"
+
+
 def main():
     payload = read_stdin_payload()
     cwd = (
@@ -78,6 +115,12 @@ def main():
 
     tokens = read_context_tokens(payload.get("transcript_path"))
     parts.append(gauge(tokens) if tokens else f"{DIM}░░░░░░░░ --{RESET}")
+
+    rate_limits = payload.get("rate_limits") or {}
+    for label, key in (("5h", "five_hour"), ("7j", "seven_day")):
+        segment = limit(label, rate_limits.get(key))
+        if segment:
+            parts.append(segment)
 
     sys.stdout.write(f" {DIM}·{RESET} ".join(parts))
 
