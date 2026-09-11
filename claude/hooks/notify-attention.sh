@@ -296,11 +296,6 @@ case "$ACTION" in
     mkdir -p "$STATE_DIR" 2>/dev/null && printf '%s' "$topic" >"$STATE_FILE" 2>/dev/null
     set_title "${MARKER}${topic:-Claude Code — $PROJECT}"
 
-    # Konsole flags the tab (and its taskbar entry) on a bell, and that flag is
-    # Konsole's own state, so Claude Code's constant title repaints cannot wipe
-    # it. Set Konsole's bell mode to visual/none to keep it silent.
-    tty_write '\a'
-
     play_sound &
     notify_desktop "🔔 $label" "$MESSAGE"$'\n'"$CWD"
     ;;
