@@ -39,6 +39,10 @@ STATE_DIR="${XDG_RUNTIME_DIR:-/tmp}/claude-notify"
 STATE_FILE="$STATE_DIR/$SESSION"
 
 MARKER='🔔 '
+# How long the toast stays on screen, in ms. 0 = until dismissed. Plasma honors
+# both. The toast is closed early anyway as soon as you type in the conversation
+# (the `clear` action), so this only bounds an unanswered request.
+TOAST_TIMEOUT_MS=30000
 LOG="$STATE_DIR/debug.log"
 
 # Enable with CLAUDE_NOTIFY_DEBUG=1 to trace the toast-action path.
@@ -243,7 +247,7 @@ notify_desktop() {
           KONSOLE_DBUS_WINDOW="$KONSOLE_DBUS_WINDOW" \
           bash -c '
             picked=$(timeout 600 notify-send -a "Claude Code" -i utilities-terminal \
-              -u normal -t 0 \
+              -u normal -t "$6" \
               -h string:desktop-entry:org.kde.konsole \
               -A "focus=Aller à la conversation" \
               "$1" "$2" 2>/dev/null)
@@ -251,9 +255,10 @@ notify_desktop() {
               printf "%s [watcher] picked=%s\n" "$(date +%H:%M:%S)" "${picked:-<none>}" \
                 >>"$5/debug.log" 2>/dev/null
             [ "$picked" = "focus" ] && exec "$3" focus "$4" </dev/null
-          ' _ "$title" "$body" "$0" "$SESSION" "$STATE_DIR" </dev/null >/dev/null 2>&1 &
+          ' _ "$title" "$body" "$0" "$SESSION" "$STATE_DIR" "$TOAST_TIMEOUT_MS" \
+            </dev/null >/dev/null 2>&1 &
       else
-        notify-send -a "Claude Code" -i utilities-terminal -u normal -t 15000 \
+        notify-send -a "Claude Code" -i utilities-terminal -u normal -t "$TOAST_TIMEOUT_MS" \
           -h "string:x-canonical-private-synchronous:claude-code-$SESSION" \
           "$title" "$body" >/dev/null 2>&1
       fi
