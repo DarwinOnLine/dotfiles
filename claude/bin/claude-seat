@@ -9,13 +9,14 @@
 #   This script keeps one copy of that file per account ("seat") and swaps them.
 #
 # FIRST-TIME SETUP (run `claude-seat setup` for an interactive version)
-#   1. Log in to account A in Claude Code, quit, then: claude-seat add a "a@example.com"
-#   2. Run `claude`, /login as account B, quit, then:   claude-seat add b "b@example.com"
-#   3. From then on:  claude-seat a   |   claude-seat b
+#   claude-seat login a a@example.com   # signs in, then captures the seat
+#   claude-seat login b b@example.com
+#   From then on:  claude-seat a   |   claude-seat b
 #
 # WHERE THINGS LIVE
 #   ~/.claude/seats/<name>.json    a saved copy of .credentials.json
-#   ~/.claude/seats/<name>.label   free-text label shown by `list` (e.g. the email)
+#   ~/.claude/seats/<name>.label   account email, read from `claude auth status`
+#   ~/.claude/seats/<name>.account  the matching `oauthAccount` block of ~/.claude.json
 #   ~/.claude/seats/.active        which seat is currently installed
 #   Nothing here is stored in the dotfiles repo: the tokens and the labels are
 #   machine-local and must never be committed.
@@ -44,23 +45,135 @@ print("expires in %dd" % ((t/1000-time.time())/86400) if t else "")' "$f" 2>/dev
   echo "${lbl:+$lbl }${exp:+($exp)}"
 }
 
+# Claude Code caches the account identity (uuid, email, org) in ~/.claude.json
+# under "oauthAccount", separately from the tokens. Swapping only the tokens
+# leaves that cache pointing at the previous account, so `claude auth status`
+# lies. Both must move together.
+CLAUDE_JSON="$HOME/.claude.json"
+
+# Only saves when the cache actually belongs to this seat: the identity cache
+# lags behind a token swap, so blindly copying it would file one account's
+# identity under another seat's name.
+account_save() {  # $1 = seat name
+  [[ -n "${1:-}" && -f "$CLAUDE_JSON" ]] || return 0
+  local want=""; [[ -f "$SEATS/$1.label" ]] && want="$(cat "$SEATS/$1.label")"
+  python3 -c 'import json,sys
+try:
+    a=json.load(open(sys.argv[1])).get("oauthAccount")
+    want=sys.argv[3]
+    if a and (not want or a.get("emailAddress")==want):
+        json.dump(a, open(sys.argv[2],"w"))
+except Exception: pass' "$CLAUDE_JSON" "$SEATS/$1.account" "$want" 2>/dev/null || true
+  [[ -f "$SEATS/$1.account" ]] && chmod 600 "$SEATS/$1.account"
+  return 0
+}
+
+account_restore() {  # $1 = seat name
+  local a="$SEATS/${1:-}.account"
+  [[ -f "$a" && -f "$CLAUDE_JSON" ]] || return 0
+  # Read-modify-write of a file Claude Code also rewrites; keep it short and
+  # atomic (tmp + rename) so a concurrent write cannot observe a partial file.
+  python3 -c 'import json,os,sys
+cfg,acc=sys.argv[1],sys.argv[2]
+d=json.load(open(cfg)); d["oauthAccount"]=json.load(open(acc))
+t=cfg+".seat-tmp"; json.dump(d, open(t,"w")); os.replace(t,cfg)' "$CLAUDE_JSON" "$a" 2>/dev/null \
+    || echo "warning: could not update oauthAccount in ~/.claude.json" >&2
+  return 0
+}
+
+# Fingerprint of a credentials file, used to tell seats apart.
+token_of() {
+  python3 -c 'import json,sys
+try: print(json.load(open(sys.argv[1]))["claudeAiOauth"]["refreshToken"])
+except Exception: pass' "$1" 2>/dev/null || true
+}
+
 # Claude Code silently rotates the tokens and rewrites .credentials.json, so the
 # live file must be folded back into its slot before we overwrite it. Skipping
 # this would restore a stale refresh token on the next switch and force a /login.
+#
+# Careful: a session left running under the PREVIOUS seat can rewrite the live
+# file long after a switch, which would otherwise save seat A's tokens into
+# seat B's slot and destroy it. So first check whether the live file still
+# belongs to the seat we think is active; if it matches another seat, trust the
+# tokens and just re-point .active instead of overwriting anything.
 sync_back() {
   local cur; cur="$(current_seat)"
-  [[ -n "$cur" && -f "$CREDS" ]] || return 0
-  cp -f "$CREDS" "$SEATS/$cur.json"
+  [[ -f "$CREDS" ]] || return 0
+  local live; live="$(token_of "$CREDS")"
+  [[ -n "$live" ]] || return 0
+
+  shopt -s nullglob
+  for f in "$SEATS"/*.json; do
+    local n; n="$(basename "$f" .json)"
+    if [[ "$n" != "$cur" && "$live" == "$(token_of "$f")" ]]; then
+      echo "note: live credentials belong to seat '$n', not '$cur' — a session of '$n' rewrote them." >&2
+      echo "$n" > "$ACTIVE"
+      return 0
+    fi
+  done
+
+  if [[ -n "$cur" ]]; then
+    cp -f "$CREDS" "$SEATS/$cur.json"
+    account_save "$cur"
+  fi
+  return 0
+}
+
+# Email of the account the live credentials belong to (authoritative, not guessed).
+live_email() {
+  claude auth status 2>/dev/null | python3 -c 'import json,sys
+try: print(json.load(sys.stdin).get("email",""))
+except Exception: pass' 2>/dev/null || true
 }
 
 cmd_add() {
   local name="${1:-}" label="${2:-}"
   [[ -n "$name" ]] || die "usage: claude-seat add <name> [label]"
-  [[ -f "$CREDS" ]] || die "no credentials found — run 'claude', /login, quit, then retry"
+  [[ -f "$CREDS" ]] || die "no credentials found — run 'claude auth login' first"
+
+  # Guard against the classic mistake: capturing the same login twice under two
+  # names. The labels would differ, the tokens would not, and switching would
+  # silently do nothing.
+  local live; live="$(token_of "$CREDS")"
+  shopt -s nullglob
+  for f in "$SEATS"/*.json; do
+    local n; n="$(basename "$f" .json)"
+    [[ "$n" == "$name" ]] && continue
+    if [[ -n "$live" && "$live" == "$(token_of "$f")" ]]; then
+      die "these credentials are already saved as seat '$n' ($(cat "$SEATS/$n.label" 2>/dev/null))
+       You are still logged in as that account. Sign in to the other one first:
+         claude auth login --email other@example.com"
+    fi
+  done
+
+  [[ -n "$label" ]] || label="$(live_email)"
   cp -f "$CREDS" "$SEATS/$name.json"; chmod 600 "$SEATS/$name.json"
   [[ -n "$label" ]] && echo "$label" > "$SEATS/$name.label"
+  account_save "$name"
   echo "$name" > "$ACTIVE"
   echo "✓ seat '$name' saved and marked active  $(seat_info "$name")"
+}
+
+cmd_rm() {
+  local name="${1:-}"
+  [[ -n "$name" ]] || die "usage: claude-seat rm <name>"
+  [[ -f "$SEATS/$name.json" ]] || die "unknown seat '$name' (see: claude-seat list)"
+  rm -f "$SEATS/$name.json" "$SEATS/$name.label" "$SEATS/$name.account"
+  [[ "$(current_seat)" == "$name" ]] && rm -f "$ACTIVE"
+  echo "✓ seat '$name' removed (the live session is untouched)"
+}
+
+# Sign in to an account, then capture it as a seat in one go.
+cmd_login() {
+  local name="${1:-}" email="${2:-}"
+  [[ -n "$name" ]] || die "usage: claude-seat login <name> [email]"
+  sync_back
+  claude auth login ${email:+--email "$email"}
+  local got; got="$(live_email)"
+  [[ -z "$email" || -z "$got" || "$got" == "$email" ]] || \
+    die "signed in as '$got', expected '$email' — nothing saved, retry"
+  cmd_add "$name"
 }
 
 cmd_list() {
@@ -76,13 +189,15 @@ cmd_list() {
 cmd_use() {
   local name="$1"
   [[ -f "$SEATS/$name.json" ]] || die "unknown seat '$name' (see: claude-seat list)"
-  if pgrep -u "$USER" -x claude >/dev/null 2>&1; then
-    # A running session holds the credentials in memory and may rewrite the file on exit.
-    echo "⚠  a 'claude' process is running; it may overwrite the credentials on exit." >&2
-    read -rp "Switch anyway? [y/N] " a; [[ "$a" =~ ^[yY]$ ]] || exit 1
-  fi
   sync_back
+  local n; n="$(pgrep -u "$USER" -cx claude 2>/dev/null || echo 0)"
+  if (( n > 0 )); then
+    # Running sessions pick the new credentials up on their next token refresh.
+    # They may also rewrite the file later; sync_back above handles that safely.
+    echo "note: $n claude session(s) running — they will pick this up on their next request." >&2
+  fi
   cp -f "$SEATS/$name.json" "$CREDS"; chmod 600 "$CREDS"
+  account_restore "$name"
   echo "$name" > "$ACTIVE"
   echo "✓ active seat: $name  $(seat_info "$name")"
 }
@@ -94,10 +209,11 @@ Registering your Claude Code accounts
 Repeat these steps once per account. Each one stores a copy of the current
 login, so make sure no 'claude' session is running while you do it.
 
-  1. Log in to the account you want to capture:
-       claude            → /login → finish in the browser → /exit
-  2. Save it under a short name, with the email as a reminder:
-       claude-seat add work "you@company.com"
+  claude-seat login work you@company.com
+
+That signs you in (browser step) and stores the session under the name 'work'.
+The label is read from `claude auth status`, so it cannot disagree with the
+account actually captured. Capturing the same login twice is refused.
 
 Then switching is instant, no browser involved:
        claude-seat work
@@ -115,11 +231,13 @@ TXT
 case "${1:-}" in
   ""|status)     c="$(current_seat)"; echo "active seat: ${c:-<none>}  $(seat_info "$c")" ;;
   add)           shift; cmd_add "${1:-}" "${2:-}" ;;
+  rm|remove)     shift; cmd_rm "${1:-}" ;;
+  login)         shift; cmd_login "${1:-}" "${2:-}" ;;
   list|ls)       cmd_list ;;
   sync)          sync_back; echo "✓ tokens of '$(current_seat)' saved" ;;
   setup)         cmd_setup ;;
   -h|--help|help)
-    echo "usage: claude-seat [status | list | add <name> [label] | sync | setup | <name>]"
+    echo "usage: claude-seat [status | list | login <name> [email] | add <name> [label] | rm <name> | sync | setup | <name>]"
     echo "       claude-seat setup   — guided first-time instructions" ;;
   *)             cmd_use "$1" ;;
 esac

@@ -42,14 +42,23 @@ dotfiles/
 without a browser logout/login each time.
 
 ```bash
-claude-seat setup                      # guided first-time instructions
-claude-seat add work "you@company.com" # capture the account currently logged in
-claude-seat list                       # '*' marks the active seat
-claude-seat work                       # switch (do it outside a running session)
+claude-seat setup                          # guided first-time instructions
+claude-seat login work you@company.com     # sign in, then capture as seat "work"
+claude-seat list                           # '*' marks the active seat
+claude-seat work                           # switch; running sessions follow along
 ```
 
-Seats live in `~/.claude/seats/` — tokens and labels are machine-local and never
-committed here.
+A seat holds both halves of an identity: the tokens from
+`~/.claude/.credentials.json` and the `oauthAccount` block of `~/.claude.json`.
+Swapping only the first leaves `claude auth status` reporting the wrong account.
+
+The browser step of `login` needs a session that is *not* already signed in to
+the other account, otherwise it silently re-authenticates the same one. Use
+`BROWSER=firefox-private claude-seat login …` (wrapper in `claude/bin/`), or a
+dedicated Firefox profile via `firefox -P`.
+
+Seats live in `~/.claude/seats/` — tokens and identities are machine-local and
+never committed here.
 
 ## Git identities
 

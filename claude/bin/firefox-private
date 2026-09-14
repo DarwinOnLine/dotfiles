@@ -1,0 +1,5 @@
+#!/bin/sh
+# Wrapper for $BROWSER: the convention only carries an executable path, not a
+# command line, so `BROWSER='firefox --private-window'` is spawned verbatim and
+# silently fails. Point BROWSER at this file instead.
+exec firefox --private-window "$@"
