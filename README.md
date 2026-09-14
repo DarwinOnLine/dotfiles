@@ -26,6 +26,7 @@ dotfiles/
 ├── claude/
 │   ├── CLAUDE.md        # Global instructions
 │   ├── settings.json    # Attribution, hooks, editor settings
+│   ├── bin/             # Helper CLIs, symlinked into ~/.local/bin
 │   ├── hooks/           # Scripts called by settings.json hooks
 │   └── skills/          # Personal skills, symlinked into ~/.claude/skills
 ├── streamcontroller/
@@ -33,6 +34,22 @@ dotfiles/
 │   └── install.sh       # Applies them, idempotent
 └── install.sh           # Symlink installer
 ```
+
+## Switching between Claude Code accounts
+
+`claude/bin/claude-seat` swaps the OAuth session stored in
+`~/.claude/.credentials.json`, so several Claude accounts can share one machine
+without a browser logout/login each time.
+
+```bash
+claude-seat setup                      # guided first-time instructions
+claude-seat add work "you@company.com" # capture the account currently logged in
+claude-seat list                       # '*' marks the active seat
+claude-seat work                       # switch (do it outside a running session)
+```
+
+Seats live in `~/.claude/seats/` — tokens and labels are machine-local and never
+committed here.
 
 ## Git identities
 

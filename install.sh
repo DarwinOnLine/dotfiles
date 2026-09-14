@@ -25,6 +25,13 @@ for skill_dir in "$DOTFILES_DIR/claude/skills"/*/; do
     ln -sfn "$skill_dir" ~/.claude/skills/"$skill_name"
 done
 
+# Claude Code helper scripts
+echo "→ Claude Code helper scripts..."
+mkdir -p ~/.local/bin
+for script in "$DOTFILES_DIR/claude/bin"/*; do
+    ln -sf "$script" ~/.local/bin/"$(basename "$script")"
+done
+
 # StreamController
 echo "→ StreamController plugin patches..."
 "$DOTFILES_DIR/streamcontroller/install.sh"
@@ -34,6 +41,9 @@ echo "✓ Dotfiles installed"
 echo ""
 echo "Linked files:"
 ls -la ~/.gitconfig ~/.gitconfig.personal ~/.claude/settings.json ~/.claude/CLAUDE.md
+echo ""
+echo "Helper scripts (ensure ~/.local/bin is in your PATH):"
+ls -la ~/.local/bin/claude-seat
 echo ""
 echo "Skills:"
 ls -la ~/.claude/skills/
