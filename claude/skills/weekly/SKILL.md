@@ -22,6 +22,31 @@ Read `~/.claude/weekly.local.md`. It is machine-local and NOT versioned, and it 
 If that file is missing, ask the user for those four things and offer to create it. Never guess a
 path, and never write project specifics into this skill.
 
+## Step 0-bis — Rebuild the configuration when it is missing
+
+The configuration is machine-local and deliberately unversioned, so it can be lost. Rebuilding it
+is a normal task, not an error path. **Most of it is derivable**: the journal carries its own past
+entries, and the repositories carry their own conventions. Ask only for what you cannot observe.
+
+1. **Ask for the journal file**, and nothing else yet. One question.
+2. **Read it, and read its directory.** Past entries give you the section order, the objective
+   ceiling, the checkbox and blocker conventions, the typographic habits and the register. A
+   sibling file explaining how to fill it in is the format contract: prefer it over your reading.
+3. **Ask which repositories are the evidence**, then confirm each one yourself: run `git log -1`
+   in it and report what you found, so a wrong path fails now rather than at the next entry.
+4. **Find the derived tracking documents rather than asking for them.** Generated files usually
+   announce themselves in their first lines. Present what you found and let the user correct.
+5. **Ask only what remains genuinely invisible**: which journal entry is theirs if the directory
+   holds several, and any convention that past entries contradict each other on.
+6. **Write the configuration, show it in full, and ask for corrections.** State explicitly which
+   parts you derived and which the user told you, so they know what to check.
+7. **Prove it once.** Re-measure a single figure from the newest entry and compare. If it does not
+   reproduce, the configuration is wrong somewhere and that is worth knowing before a real run.
+
+Record in it the traps that were paid for on this project, not just the paths: the counting rules
+that caused a wrong entry once, and any convention learned from a correction. That is the part no
+artefact carries, and the part that is expensive to relearn.
+
 ## Step 1 — Take what the user tells you as first-class material
 
 Whatever the user volunteers with the request (a worry, a trade-off they made, a decision, a

@@ -23,6 +23,35 @@ names into plain language, the published links, and the commands that produce ea
 If it is missing, ask for those and offer to create it. Never invent a milestone, a link or a
 percentage, and never write project specifics into this skill.
 
+## Step 0-bis — Rebuild the configuration when it is missing
+
+The configuration is machine-local and deliberately unversioned, so it can be lost. Rebuilding it
+is a normal task. **The template is recoverable from the posts themselves**, which is why the
+first question is not a questionnaire.
+
+1. **Ask the user to paste their two or three most recent posts.** One question, and it carries
+   most of the answer. From them, derive and write down: the section order and the exact wording
+   of each heading, the bullet character, the typographic conventions of the channel, the register,
+   which figures appear and in what form, the invariant paragraph that must be repeated verbatim,
+   and the published links.
+2. **Derive the vocabulary table by pairing.** Match each plain-language phrase in the posts
+   against the internal names in the repository. That pairing is the table, and it was written by
+   the user, so it beats any translation you would invent. Ask about the leftovers.
+3. **Ask which repositories back the figures**, then confirm each path yourself with `git log -1`.
+4. **Find a command for every figure in the pasted posts, one by one.** Run it and compare against
+   the figure in the most recent post. Three outcomes, and each is recorded in the configuration:
+   it reproduces, so write the command down; it is close but not equal, so write down which
+   definition you used and that it is not comparable to older posts; or nothing produces it, so
+   record it as unsourced and **do not let it reappear** until the user supplies the rule.
+5. **Ask who the audience is and what must never reach them.** This is invisible in a post: what
+   is absent left no trace. Ask explicitly whether some categories of content are reserved for
+   another channel, and record the rule with the example that motivated it.
+6. **Check every process claim in the pasted posts against what is true now.** A sentence carried
+   over for months is the most likely thing to have quietly become false. Flag each one rather
+   than copying it into the template.
+7. **Write the configuration, show it in full, and ask for corrections**, marking what you derived
+   from the posts and what the user told you.
+
 ## Step 1 — Take what the user tells you as first-class material
 
 Anything volunteered with the request (a push, a pause, a trade-off, a decision, a worry) is
