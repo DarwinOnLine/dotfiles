@@ -76,8 +76,13 @@ never committed here.
   PHP is not installed natively on every machine — this machine runs it through
   Docker — so the script falls back to the project's container and stays silent
   when no runtime is available.
-- Sub-agents and the `/chiffrage` skill live in a separate repo, `dev-assistant`,
-  to avoid overlapping with the BeHigh team bundle (`dev-workflow`).
+- **This repo is public, so the skills under `claude/skills/` must stay generic.**
+  Anything carrying personal context — a real path, an audience, a channel, a client
+  name, a post template — belongs in `dev-assistant` (private), where every brick is
+  prefixed `mp-`. Moved out for that reason: `/weekly`, `/status-post`,
+  `/algo-contest`. Sub-agents and `/mp-chiffrage` were already there.
+- The BeHigh team bundle (`workflow-dev-v2`, GitLab) is the third layer: `dev-*`
+  and `qa-*` skills. Check it before adding anything here.
 - `streamcontroller/` patches store-installed plugins instead of symlinking them —
   the store overwrites its plugin directory on update. Re-run `./install.sh` after
   a plugin update; it refuses to apply a patch whose pinned upstream commit moved.
