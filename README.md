@@ -7,6 +7,7 @@ Personal configuration files for development tools.
 - **Git** - Global config with automatic personal identity for `**/Projets/Perso/**`
 - **Claude Code** - AI assistant configuration (instructions, attribution settings)
 - **StreamController** - patches for two Stream Deck plugins installed from its store
+- **Konsole** - profile with copy on select, Ctrl+V paste (Linux/KDE only, skipped elsewhere)
 
 ## Installation
 
@@ -32,6 +33,10 @@ dotfiles/
 ├── streamcontroller/
 │   ├── patches/         # Diffs against the store-installed plugins
 │   └── install.sh       # Applies them, idempotent
+├── konsole/
+│   ├── Darwin.profile   # Default profile: copy on select
+│   ├── sessionui.rc     # Shortcut override: Ctrl+V pastes
+│   └── install.sh       # Symlinks them, no-op without Konsole
 └── install.sh           # Symlink installer
 ```
 
@@ -59,6 +64,22 @@ dedicated Firefox profile via `firefox -P`.
 
 Seats live in `~/.claude/seats/` — tokens and identities are machine-local and
 never committed here.
+
+## Terminal copy/paste
+
+Wanted everywhere: selecting text copies it, Ctrl+V pastes, Ctrl+C still sends
+SIGINT. Only Konsole is automated; elsewhere it is a setting to flip once.
+
+| Terminal | Copy | Paste | Setting |
+|----------|------|-------|---------|
+| Konsole (Linux) | on select | Ctrl+V | `konsole/` — automated |
+| Windows Terminal | on select, or Ctrl+C with a selection | Ctrl+V (default) | `"copyOnSelect": true` in its `settings.json` |
+| iTerm2 (macOS) | on select (default) | Cmd+V | *Settings → General → Selection* |
+| Terminal.app (macOS) | Cmd+C (no copy on select) | Cmd+V | — |
+| JetBrains terminal | Ctrl+C with a selection | Ctrl+V | built in |
+
+Konsole cannot make Ctrl+C copy only when text is selected: binding it to Copy
+would lose SIGINT, hence copy on select instead.
 
 ## Git identities
 

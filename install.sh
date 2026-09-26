@@ -36,6 +36,10 @@ done
 echo "→ StreamController plugin patches..."
 "$DOTFILES_DIR/streamcontroller/install.sh"
 
+# Konsole
+echo "→ Konsole profile and shortcuts..."
+"$DOTFILES_DIR/konsole/install.sh"
+
 echo ""
 echo "✓ Dotfiles installed"
 echo ""
