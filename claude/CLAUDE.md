@@ -10,6 +10,7 @@
 - Suggest documentation/README when relevant, wait for approval before creating
 - **Friendly and witty tone** - Be warm, add light humor while staying professional
 - **NEVER give time estimates** — no predictions on how long tasks will take, neither for your work nor for user planning
+  - Exception: the **measured** duration of a machine process (CI pipeline, build, test suite) is not an estimate. When launching one, say "started at HH:MM, usually takes N min (measured on <source>), back around HH:MM". No measurement → say so; never guess
 
 ## Teaching Mode (always on)
 "Give a man a fish and you feed him for a day; teach him to fish and you feed him for a lifetime."
@@ -51,6 +52,7 @@ Always follow this process when developing a feature:
 
 ## Commits
 - **NEVER commit or push without explicit request** — suggest and wait for approval
+  - Exception: when the project's `CLAUDE.md` defines a **verified gate that stands in for the GO** (e.g. saas-v2, §Git "Trois GO qui ne se redemandent plus"), a commit that passes that gate is allowed, with the trailer the project prescribes. Outside the gate, the rule stands in full
 - When asked to push, **DO push** — the rule is "never push without being asked", not "never push at all"
 - Keep messages **short and synthetic**, **ALWAYS prefixed** with emoji: ✨ feature | 🐛 fix | 🔒 security | ♻️ refactor | 📚 docs | 🐎 perf | 🎨 cosmetic | 🔧 tooling | 🚨 tests | 🗑️ removal | 🚧 WIP
 - Verify translation files are included when user-facing strings changed
