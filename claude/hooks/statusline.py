@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
-"""Status line: model, directory, git branch, and a context-size gauge.
+"""Status line on two rows: who/where, then how much.
+
+Row 1: session name, model (+ advisor), directory, git branch.
+Row 2: context gauge, 5h / 7d plan windows.
+
+The advisor is not on the payload. Claude Code stamps `advisorModel` on every
+main-thread assistant entry of the transcript while one is active, so the last
+such entry is the truth -- including after `/advisor` turned it off. It lags
+one turn behind a `/advisor` change, since the next entry carries it.
 
 The gauge is the point. Context size is what actually drives token spend (every
 turn re-sends the whole conversation), but it is invisible by default -- you
@@ -16,16 +24,22 @@ how long until it resets, straight from the `rate_limits` field Claude Code
 puts on the status-line payload.
 """
 
+import json
 import os
 import subprocess
 import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
-from ctxlib import read_context_tokens, read_stdin_payload  # noqa: E402
+from ctxlib import (  # noqa: E402
+    iter_assistant_entries,
+    read_context_tokens,
+    read_stdin_payload,
+)
 
 RESET = "\033[0m"
 DIM = "\033[2m"
+BOLD = "\033[1m"
 GREEN = "\033[32m"
 YELLOW = "\033[33m"
 RED = "\033[31m"
@@ -35,6 +49,8 @@ CYAN = "\033[36m"
 CTX_REF_OVERRIDE = os.environ.get("CLAUDE_CTX_REF")
 CTX_REF_FALLBACK = 200000
 BAR_WIDTH = 8
+SESSION_NAME_MAX = 32
+USER_SETTINGS = os.path.expanduser("~/.claude/settings.json")
 
 
 def git_branch(cwd):
@@ -48,6 +64,34 @@ def git_branch(cwd):
         return out.stdout.strip() or None
     except (OSError, subprocess.SubprocessError):
         return None
+
+
+def model_label(model_id):
+    """'claude-opus-5-5' -> 'Opus 5.5'; aliases like 'opus' -> 'Opus'."""
+    name = model_id.removeprefix("claude-")
+    family, _, version = name.partition("-")
+    version = version.split("[")[0].replace("-", ".")
+    return f"{family.capitalize()} {version}".strip()
+
+
+def advisor_model(transcript_path):
+    """Active advisor model id, or None when the advisor is off.
+
+    Only the latest main-thread entry counts: an older one carrying the field
+    would keep showing an advisor that /advisor has since disabled. With no
+    entry in the tail yet (fresh session), fall back to the user setting.
+    """
+    for entry in iter_assistant_entries(transcript_path):
+        return entry.get("advisorModel") or None
+    try:
+        with open(USER_SETTINGS) as fh:
+            return json.load(fh).get("advisorModel") or None
+    except (OSError, ValueError):
+        return None
+
+
+def truncate(text, limit):
+    return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
 def compact(tokens):
@@ -138,28 +182,37 @@ def main():
         or os.getcwd()
     )
 
-    parts = []
+    who = []
+
+    session_name = payload.get("session_name")
+    if session_name:
+        who.append(f"{BOLD}{truncate(session_name, SESSION_NAME_MAX)}{RESET}")
 
     model = (payload.get("model") or {}).get("display_name")
     if model:
-        parts.append(f"{CYAN}{model}{RESET}")
+        advisor = advisor_model(payload.get("transcript_path"))
+        tail = f" {DIM}+ advisor {model_label(advisor)}{RESET}" if advisor else ""
+        who.append(f"{CYAN}{model}{RESET}{tail}")
 
-    parts.append(f"{DIM}{os.path.basename(cwd.rstrip('/')) or '/'}{RESET}")
+    who.append(f"{DIM}{os.path.basename(cwd.rstrip('/')) or '/'}{RESET}")
 
     branch = git_branch(cwd)
     if branch:
-        parts.append(f"{DIM}⎇ {branch}{RESET}")
+        who.append(f"{DIM}⎇ {branch}{RESET}")
+
+    usage = []
 
     tokens, ref = context_size(payload)
-    parts.append(gauge(tokens, ref) if tokens else f"{DIM}░░░░░░░░ --{RESET}")
+    usage.append(gauge(tokens, ref) if tokens else f"{DIM}░░░░░░░░ --{RESET}")
 
     rate_limits = payload.get("rate_limits") or {}
     for label, key in (("5h", "five_hour"), ("7j", "seven_day")):
         segment = limit(label, rate_limits.get(key))
         if segment:
-            parts.append(segment)
+            usage.append(segment)
 
-    sys.stdout.write(f" {DIM}·{RESET} ".join(parts))
+    sep = f" {DIM}·{RESET} "
+    sys.stdout.write(sep.join(who) + "\n" + sep.join(usage))
 
 
 if __name__ == "__main__":

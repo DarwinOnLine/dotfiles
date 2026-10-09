@@ -15,10 +15,14 @@ import os
 TAIL_BYTES = 262144
 
 
-def read_context_tokens(transcript_path):
-    """Return the context size (tokens) of the last API request, or None."""
+def iter_assistant_entries(transcript_path):
+    """Yield main-thread assistant entries from the transcript tail, newest first.
+
+    Subagent turns (`isSidechain`) are skipped: their model, usage and advisor
+    say nothing about the conversation the status line describes.
+    """
     if not transcript_path or not os.path.isfile(transcript_path):
-        return None
+        return
     try:
         size = os.path.getsize(transcript_path)
         with open(transcript_path, "rb") as fh:
@@ -27,7 +31,7 @@ def read_context_tokens(transcript_path):
                 fh.readline()  # discard the partial line we landed in
             chunk = fh.read()
     except OSError:
-        return None
+        return
 
     for line in reversed(chunk.splitlines()):
         line = line.strip()
@@ -37,8 +41,13 @@ def read_context_tokens(transcript_path):
             entry = json.loads(line)
         except ValueError:
             continue
-        if entry.get("type") != "assistant":
-            continue
+        if entry.get("type") == "assistant" and not entry.get("isSidechain"):
+            yield entry
+
+
+def read_context_tokens(transcript_path):
+    """Return the context size (tokens) of the last API request, or None."""
+    for entry in iter_assistant_entries(transcript_path):
         usage = (entry.get("message") or {}).get("usage") or {}
         total = (
             usage.get("input_tokens", 0)
