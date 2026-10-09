@@ -20,6 +20,16 @@
             "command": "file=\"$CLAUDE_FILE_PATH\"; if echo \"$file\" | grep -qE '\\.php$'; then bash ~/dotfiles/claude/hooks/php-quality.sh \"$file\"; elif echo \"$file\" | grep -qE '\\.py$'; then bash ~/dotfiles/claude/hooks/py-quality.sh \"$file\"; elif echo \"$file\" | grep -qE '\\.(ts|tsx|js|jsx)$'; then for cfg in .eslintrc.js .eslintrc.cjs .eslintrc.json .eslintrc.yml eslint.config.js eslint.config.mjs eslint.config.ts; do if [ -f \"$cfg\" ]; then npx eslint --no-warn-ignored \"$file\" 2>&1 | head -20; break; fi; done; fi"
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"/home/darwin/.claude/hooks/behigh-apres-ecriture.py\"",
+            "timeout": 60
+          }
+        ]
       }
     ],
     "PreToolUse": [
@@ -59,6 +69,17 @@
           }
         ]
       }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/dotfiles/claude/hooks/memoire-taille.sh",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   },
   "statusLine": {
@@ -67,6 +88,12 @@
     "refreshInterval": 30
   },
   "effortLevel": "medium",
+  "modelSettings": {
+    "claude-fable-5-1": {
+      "effortLevel": "high"
+    }
+  },
+  "advisorModel": "opus",
   "tui": "fullscreen",
   "skipDangerousModePermissionPrompt": true,
   "skipWorkflowUsageWarning": true,
@@ -75,6 +102,11 @@
   "agentPushNotifEnabled": true,
   "skipAutoPermissionPrompt": true,
   "autoMode": {
+    "soft_deny": [
+      "$defaults",
+      "Bash(git push:* -f) in gitlab.com:behigh-fr/saas-v2.git — main is unprotected and pushes deploy directly; force-push or direct main pushes are high-impact per repo docs",
+      "Bash(php artisan legacy:reseed*) and Bash(php artisan qualif:anonymise*) — destructive/production-equivalent operations against the qualification environment per .env.example"
+    ],
     "environment": [
       "### Org-wide",
       "**Organization**: BeHigh (behigh-fr) — GitLab org, remote `gitlab.com:behigh-fr/saas-v2.git`",
@@ -101,11 +133,6 @@
       "**Trusted repo**: `/home/darwin/Projets/Behigh/saas-v2-e09-findings`, the git repo the agent starts in, and its `origin` remote (`gitlab.com:behigh-fr/saas-v2.git`)",
       "**Org-specific CLIs**: None configured",
       "routine under this repo's worktree conventions (`git worktree add -b <INITIALES>-<sujet>/<slug> ... main`) — per-lot branches, not a global CLI allowance"
-    ],
-    "soft_deny": [
-      "$defaults",
-      "Bash(git push:* -f) in gitlab.com:behigh-fr/saas-v2.git — main is unprotected and pushes deploy directly; force-push or direct main pushes are high-impact per repo docs",
-      "Bash(php artisan legacy:reseed*) and Bash(php artisan qualif:anonymise*) — destructive/production-equivalent operations against the qualification environment per .env.example"
     ]
   }
 }
